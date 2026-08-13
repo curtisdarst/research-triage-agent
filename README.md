@@ -162,11 +162,40 @@ Enterprise Agent Platform" interchangeably to match current docs.
 
 ## Eval results
 
-Not run yet. The eval harness itself doesn't exist (Tier 1.5, see
-[`eval/README.md`](eval/README.md)). This table will be filled in with
-unsupported-claim rate, citation accuracy, false-refusal rate, model
-version, and run date once it does. No numbers are fabricated here in the
-meantime.
+25 golden questions (10 answerable, 8 partial, 7 deliberately unanswerable),
+graded by an independent judge against `validate()`'s own verdicts. See
+[`eval/README.md`](eval/README.md) for what each metric means and how to
+run this against your own corpus; full per-claim detail in
+[`eval/results/latest.json`](eval/results/latest.json).
+
+Models: orchestrator/validation `gemini-2.5-flash`, synthesis `gemini-2.5-pro`, judge `gemini-2.5-pro`. Run date: 2026-08-13.
+
+| Metric | Value |
+|---|---|
+| Unsupported-claim rate | 0.9% |
+| Citation accuracy | 99.1% |
+| False-refusal rate | 0.0% |
+| Answerability-category match | 23/25 (92%) |
+
+Both answerability misses were `answerable` questions where the specific
+right paper didn't make the top-5 `search_corpus` results, crowded out by
+several papers on an adjacent topic (e.g. asking about the effect on
+cyclomatic complexity specifically returned five papers about prompting and
+code security, none about complexity). `synthesize` correctly produced no
+claims rather than stretching an adjacent paper into an answer. That's a
+retrieval-recall gap, not a fabrication or over-caution problem, but it's
+real: a larger or more diverse corpus, or a higher `top_k`, would likely
+close it. All 7 unanswerable questions correctly produced zero fabricated
+claims.
+
+This eval also caught a real bug during development, not just the numbers
+above: an earlier version of `synthesize` would write true-but-irrelevant
+claims when the retrieved papers didn't address the actual question, rather
+than recognizing the mismatch, since a claim being individually
+well-grounded said nothing about whether it answered what was asked.
+Fixed by instructing `synthesize` to produce zero claims when retrieval
+doesn't substantively address the question. The numbers above are
+post-fix.
 
 ## Quickstart
 

@@ -24,6 +24,7 @@ class Config:
     model_synthesis: str
     model_validation: str
     model_embedding: str
+    model_judge: str
 
 
 def load_config() -> Config:
@@ -50,6 +51,10 @@ def load_config() -> Config:
         model_synthesis=os.environ.get("MODEL_SYNTHESIS", "gemini-2.5-pro"),
         model_validation=os.environ.get("MODEL_VALIDATION", "gemini-2.5-flash"),
         model_embedding=os.environ.get("MODEL_EMBEDDING", "gemini-embedding-001"),
+        # Deliberately Pro by default, even though validate() uses Flash —
+        # the eval judge is meant to be a meaningfully stronger, slower,
+        # more careful second opinion, not a repeat of the same check.
+        model_judge=os.environ.get("MODEL_JUDGE", "gemini-2.5-pro"),
     )
 
 

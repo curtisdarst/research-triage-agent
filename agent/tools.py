@@ -64,6 +64,16 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
+def get_synthesis(synthesis_id: str) -> SynthesisResult | None:
+    """Eval-only accessor: the full SynthesisResult (with claim text/paper_ids), not just the summary synthesize() returns."""
+    return _store.get(synthesis_id)  # type: ignore[return-value]
+
+
+def get_retrieval(retrieval_id: str) -> list[dict] | None:
+    """Eval-only accessor: the full retrieved papers (with abstract text), not just the preview retrieve() returns."""
+    return _store.get(retrieval_id)  # type: ignore[return-value]
+
+
 def search_corpus(query: str, top_k: int = 5) -> dict:
     """Searches the paper corpus for abstracts most relevant to a research question.
 
@@ -203,6 +213,15 @@ each claim should be checkable as true or false against a single abstract's text
 a literature set for a question. Do not add meta-commentary about \
 confidence or hedging — a separate verification step checks each claim \
 against the source text, that is not your job here.
+- If the retrieved abstracts do not substantively address what the question \
+is actually asking about — for example the question is about one subject \
+and the retrieved papers are about a different, unrelated subject — output \
+ZERO claims. Do not write a claim that just notes the mismatch, and do not \
+write claims describing what the abstracts cover instead if that isn't what \
+was asked. An empty claim list is itself the correct, honest output here; a \
+downstream step already turns that into a clear "could not verify" answer, \
+so you do not need to explain the mismatch yourself. Only write claims that \
+are actually responsive to the question asked.
 """
 
 
@@ -351,6 +370,7 @@ def validate(synthesis_id: str, retrieval_id: str) -> dict:
     verdicts = {v.id: v for v in validation.results}
 
     supported_lines, unsupported_lines = [], []
+    claim_supported: dict[int, bool] = {}
     for c in result.claims:
         verdict = verdicts.get(c.id)
         cite = " ".join(f"[{pid}]" for pid in c.paper_ids)
@@ -361,11 +381,14 @@ def validate(synthesis_id: str, retrieval_id: str) -> dict:
             unsupported_lines.append(
                 f"- {c.text} (cited {cite}, but {unknown_ids} were never retrieved)"
             )
+            claim_supported[c.id] = False
         elif verdict is not None and verdict.supported:
             supported_lines.append(f"- {c.text} {cite}")
+            claim_supported[c.id] = True
         else:
             reason = verdict.reasoning if verdict else "not checked"
             unsupported_lines.append(f"- {c.text} (cited {cite} — {reason})")
+            claim_supported[c.id] = False
 
     parts = []
     if supported_lines:
@@ -404,4 +427,9 @@ def validate(synthesis_id: str, retrieval_id: str) -> dict:
         "final_markdown": markdown,
         "supported_count": len(supported_lines),
         "unsupported_count": len(unsupported_lines),
+        # Per-claim verdicts, keyed by claim id — not needed by the
+        # orchestrator (which only uses final_markdown) but read directly by
+        # eval/run_eval.py to score validate()'s accuracy against an
+        # independent judge.
+        "claim_supported": claim_supported,
     }

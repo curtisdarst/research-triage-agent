@@ -2,11 +2,11 @@
 
 > A governed agentic RAG reference implementation on Google Cloud, with a reproducible citation-grounding eval.
 
-This is a reference implementation, not a research tool and not a product. It
-demonstrates a pattern — agentic retrieval with an explicit, visible
-grounding guardrail — on a small, real corpus, and it will ship a
-reproducible eval of that guardrail before it is presented as anything more
-than a demo. See [Status](#status) for exactly what is and isn't built yet.
+This is a reference implementation, not a research tool and not a product.
+It demonstrates agentic retrieval with an explicit, visible grounding
+guardrail, on a small, real corpus, and it will ship a reproducible eval of
+that guardrail before it is presented as anything more than a demo. See
+[Status](#status) for exactly what is and isn't built yet.
 
 ## What this is not
 
@@ -21,8 +21,8 @@ a cited summary" is a solved, crowded lane, and none of the above are ADK
 implementations, none package a university-IT deployment posture
 (per-project cost attribution, audit logging, a data perimeter, an eval
 gate in CI), and none ship a portable, reproducible grounding eval you can
-point at your own corpus. Those three gaps — an ADK-native implementation,
-institutional deployment posture, and a reproducible eval — are what this
+point at your own corpus. Those three gaps (an ADK-native implementation,
+institutional deployment posture, and a reproducible eval) are what this
 project occupies, on top of a standard agentic-RAG pattern, not instead of
 one.
 
@@ -30,7 +30,7 @@ It is also explicitly not the same thing as ADK's own `llm_auditor` sample.
 `llm_auditor` uses critic/reviser sub-agents to critique and improve a
 response's quality in general terms. This project's `validate` step checks
 each individual claim against the specific retrieved source text it cites
-and **reports** unsupported claims rather than silently revising them —
+and **reports** unsupported claims rather than silently revising them. That's
 verification with provenance, not critique.
 
 ## Topic choice
@@ -38,39 +38,50 @@ verification with provenance, not critique.
 The brief this was built from suggested a hard-science, institution-adjacent
 topic (materials science, agricultural genomics, medical imaging). This
 build instead uses a corpus centered on **the effect of prompt engineering
-patterns on LLM-generated code quality** — the author's own dissertation
+patterns on LLM-generated code quality**, the author's own dissertation
 research area (arXiv `cs.SE`, `cs.CL`, `cs.AI`). That's a deliberate
 substitution, not a shortcut: arXiv has strong native coverage of the
 topic, and personal domain expertise means the person running the demo can
 actually judge, in real time, whether the agent's digest and its guardrail
-catch are correct — which is a more credible test of the pattern than a
-topic the presenter would have to take on faith.
+catch are correct. That's a more credible test of the pattern than a topic
+the presenter would have to take on faith.
 
 ## Architecture
 
-The orchestrator is a single ADK agent that decides, turn by turn, which of
-the four tools to call next — it is not a hardcoded pipeline. What *is*
-hardcoded is what happens inside `validate`: it checks each claim against
-its cited source text and assembles the final answer itself, so the
-guardrail's visibility doesn't depend on the orchestrator faithfully
-repeating it.
+`synthesize` writes claims with citations attached regardless of whether
+the retrieved papers actually address the question. Citations alone don't
+mean grounded. The one thing this system adds on top of that, that a naive
+agent doesn't have, is a hop that checks before anything ships:
+
+```mermaid
+flowchart LR
+    Q(["Out-of-corpus question,<br/>e.g. crop yield prediction"]) --> SY["synthesize<br/>writes claims from whatever<br/>was retrieved, citations attached"]
+
+    SY -->|"naive agent: ships directly"| NAIVE["Confident answer,<br/>looks legitimate,<br/>not actually grounded"]
+    SY -->|"this system: one more hop"| V["validate<br/>checks each claim against<br/>its actual cited source text"]
+    V --> GAP["'Could not verify':<br/>gap reported, not guessed"]
+
+    style NAIVE fill:#c0392b,color:#fff,stroke:#8b2c20,stroke-width:2px
+    style V fill:#2f7f8f,color:#fff,stroke:#1f5560,stroke-width:2px
+    style GAP fill:#2f7f8f,color:#fff,stroke:#1f5560,stroke-width:2px
+```
+
+Same `synthesize` output, same citations attached either way. The only
+difference is whether something reads them before a user does. That single
+added hop is the whole pitch. Here's where it sits in the full system:
 
 ```mermaid
 flowchart TB
-    U(["Research question"]) --> O
-
-    subgraph Orchestrator["ADK orchestrator — gemini-2.5-flash · sequences tool calls by instruction"]
-        O["research_triage_agent"]
-    end
+    U(["Research question"]) --> O["research_triage_agent<br/>orchestrator · gemini-2.5-flash · sequences tool calls by instruction"]
 
     O -->|"1"| T1["search_corpus<br/><i>embed query, BQ VECTOR_SEARCH</i>"]
     O -->|"2"| T2["retrieve<br/><i>fetch full text by paper_id</i>"]
-    O -->|"3"| T3["synthesize<br/><i>gemini-2.5-pro</i><br/>claim-by-claim digest, cites paper_ids"]
-    O -->|"4"| T4["validate<br/><i>gemini-2.5-flash</i><br/>checks each claim vs. its cited source text"]
+    O -->|"3"| T3["synthesize (gemini-2.5-pro)<br/>claim-by-claim digest, cites paper_ids"]
+    O -->|"4"| T4["validate (gemini-2.5-flash)<br/>checks each claim vs. its cited source text"]
 
     EMB[["gemini-embedding-001"]]
     T1 <--> EMB
-    T1 <-->|"VECTOR_SEARCH top-k"| BQ[("BigQuery: papers<br/>id · title · authors · abstract · url · embedding<br/>~400 arXiv abstracts")]
+    T1 <-->|"VECTOR_SEARCH top-k"| BQ[("BigQuery: papers<br/>id · title · authors · abstract · url · embedding<br/>400 arXiv abstracts")]
     T2 <-->|"SELECT ... WHERE id IN UNNEST"| BQ
 
     T1 -.->|"paper_ids"| T2
@@ -80,11 +91,23 @@ flowchart TB
     T4 -->|"final_markdown, returned verbatim"| O
     O --> A(["Final answer"])
 
-    style T4 fill:#4a2020,stroke:#c0392b,stroke-width:2px
+    style T4 fill:#2f7f8f,color:#fff,stroke:#1f5560,stroke-width:2px
 ```
 
-The guardrail is the reason this is worth looking at, so it's worth
-diagramming on its own — this is what actually happens inside a single
+Tool call order is enforced by instruction (the pattern ADK's own samples
+use), not by a hardcoded pipeline. The orchestrator is genuinely deciding
+to call each tool, which is what makes this agentic rather than a fixed
+script wearing an agent costume. Handles pass between tools
+(`paper_ids` → `retrieval_id` → `synthesis_id`, dotted arrows above)
+instead of full document text, so the orchestrator never has to retype
+large payloads between calls. It only ever sees small ids.
+
+What is *not* left to the orchestrator's discretion is the guardrail's
+visibility: `validate` assembles the final answer text itself (supported
+findings, then an explicit "Could not verify" section), and the
+orchestrator is instructed to return that output verbatim.
+Correctness-critical formatting is deterministic code; only the sequencing
+decision is agentic. This is what actually happens inside that one
 `validate` call:
 
 ```mermaid
@@ -95,7 +118,7 @@ sequenceDiagram
     participant S as Retrieved source text
 
     O->>Y: synthesize(question, retrieval_id)
-    Y-->>O: synthesis_id — N discrete claims, each citing paper_ids
+    Y-->>O: synthesis_id: N discrete claims, each citing paper_ids
     O->>V: validate(synthesis_id, retrieval_id)
     loop for each claim
         V->>S: does the cited abstract actually say this?
@@ -106,24 +129,15 @@ sequenceDiagram
     else one or more unsupported
         V-->>O: final_markdown = "## Findings" (supported claims)<br/>+ "## Could not verify" (named gap, not dropped)
     end
-    Note over V,O: The orchestrator is instructed to return this text<br/>verbatim — it cannot paraphrase the gap away.
+    Note over V,O: The orchestrator is instructed to return this text<br/>verbatim. It cannot paraphrase the gap away.
 ```
 
-Tool call order is enforced by instruction (the pattern ADK's own samples
-use), not by a hardcoded pipeline — the orchestrator is genuinely deciding
-to call each tool, which is what makes this agentic rather than a fixed
-script wearing an agent costume. What is *not* left to the orchestrator's
-discretion is the guardrail's visibility: `validate` assembles the final
-answer text itself (supported findings, then an explicit "Could not
-verify" section), and the orchestrator is instructed to return that output
-verbatim. Correctness-critical formatting is deterministic code; only the
-sequencing decision is agentic.
-
 **Why tiered models**: `search_corpus`'s embedding call and `validate`'s
-per-claim check are cheap, high-volume, low-creativity tasks — Flash.
-`synthesize`'s writing task is not — Pro. The orchestrator itself only
-sequences tool calls, so it runs on Flash too. Paying Pro rates for every
-step is how proof-of-concept economics stop working at production volume.
+per-claim check are cheap, high-volume, low-creativity tasks, so they run
+on Flash. `synthesize`'s writing task is not, so it runs on Pro. The
+orchestrator itself only sequences tool calls, so it runs on Flash too.
+Paying Pro rates for every step is how proof-of-concept economics stop
+working at production volume.
 
 **Why no vector index**: BigQuery only populates a `CREATE VECTOR INDEX`
 once the indexed table exceeds ~10 MB; this corpus (a few hundred rows of
@@ -143,12 +157,12 @@ Enterprise Agent Platform" interchangeably to match current docs.
 | | |
 |---|---|
 | Tier 1 (interview demo) | Built. See Quickstart below. |
-| Tier 1.5 (eval harness + CI gate) | **Not built.** Required before this repo is public — see [`eval/README.md`](eval/README.md). |
+| Tier 1.5 (eval harness + CI gate) | **Not built.** Required before this repo is public. See [`eval/README.md`](eval/README.md). |
 | Tier 2 (Cloud Run deploy, model comparison) | Not built. Local CLI only for now. |
 
 ## Eval results
 
-Not run yet — the eval harness itself doesn't exist (Tier 1.5, see
+Not run yet. The eval harness itself doesn't exist (Tier 1.5, see
 [`eval/README.md`](eval/README.md)). This table will be filled in with
 unsupported-claim rate, citation accuracy, false-refusal rate, model
 version, and run date once it does. No numbers are fabricated here in the
@@ -167,7 +181,7 @@ pip install -r requirements.txt
 cp .env.example .env   # fill in GCP_PROJECT_ID
 ```
 
-Auth is Application Default Credentials — no service account key is ever
+Auth is Application Default Credentials. No service account key is ever
 created or stored in this repo:
 
 ```bash
@@ -181,7 +195,7 @@ Provision BigQuery (idempotent, safe to re-run):
 source .env && bash setup/provision_gcp.sh
 ```
 
-Ingest the corpus (idempotent — re-running updates rather than duplicates):
+Ingest the corpus (idempotent: re-running updates rather than duplicates):
 
 ```bash
 python ingest/ingest_arxiv.py --max-results 400
@@ -191,7 +205,7 @@ Run the demo:
 
 ```bash
 python run_demo.py --demo happy   # answerable from the corpus
-python run_demo.py --demo gap     # deliberately out of corpus scope — triggers the guardrail
+python run_demo.py --demo gap     # deliberately out of corpus scope, triggers the guardrail
 python run_demo.py --query "your own research question"
 ```
 
@@ -209,9 +223,9 @@ per step) before the final answer.
 3. **Run the out-of-corpus query** (`--demo gap`). Let it flag. Say: "That
    is the whole demo. The interesting behavior is the refusal, not the
    answer."
-4. **Name the cost.** "About a penny per query — a bit more when it finds a
+4. **Name the cost.** "About a penny per query: a bit more when it finds a
    real answer to synthesize and validate, less than that when it correctly
-   refuses — using Flash for retrieval and validation and Pro only for
+   refuses. Uses Flash for retrieval and validation, Pro only for
    synthesis." (see [Cost per query](#cost-per-query) below for exact
    measured numbers)
 5. **Point at production.** "In a real deployment this sits behind VPC
@@ -223,7 +237,7 @@ Then stop talking. Do not narrate the code.
 
 ## Cost per query
 
-Measured, not estimated — see the trace output of an actual run for exact
+Measured, not estimated. See the trace output of an actual run for exact
 figures. As of 2026-08-13 pricing (`agent/config.py`, `ai.google.dev/gemini-api/docs/pricing`):
 
 | Step | Model | Rate |
@@ -236,10 +250,10 @@ Actual measured runs against the 400-paper corpus, 2026-08-13:
 
 | Query | Claims | Tokens (in/out) | Cost | Wall clock |
 |---|---|---|---|---|
-| `--demo happy` (answerable) | 8 synthesized, 7 supported, 1 caught by validator | 4,968 / 1,612 | **$0.0123** | 74.0s |
-| `--demo gap` (out of corpus) | 0 synthesized — refused rather than guessed | 1,882 / 9 | **$0.0024** | 22.2s |
+| `--demo happy` (answerable) | 6 synthesized, 5 supported, 1 caught by validator | 4,302 / 1,259 | **$0.0103** | 72.2s |
+| `--demo gap` (out of corpus) | 0 synthesized, refused rather than guessed | 2,135 / 9 | **$0.0028** | 26.2s |
 
-The refusal path is both faster and cheaper than a real answer — `synthesize`
+The refusal path is both faster and cheaper than a real answer. `synthesize`
 declines to invent claims once it has nothing to ground them in, so
 `validate` has nothing to check and the whole run short-circuits. Cheap
 honesty, not just correct honesty.
@@ -254,24 +268,24 @@ This demo intentionally does not include:
 - **VPC Service Controls** around the BigQuery corpus and the Vertex/Gemini
   Enterprise Agent Platform endpoints, to enforce a data perimeter.
 - **CMEK** (customer-managed encryption keys) on the BigQuery dataset.
-- **Agent Identity and Registry** — this agent has no identity of its own;
+- **Agent Identity and Registry**: this agent has no identity of its own;
   it runs as whoever's ADC is active. A real deployment gives it a service
   identity, registers it, and scopes its BigQuery/Vertex IAM roles tightly.
-- **Per-project cost attribution** for grant accounting — the Cloud Run
+- **Per-project cost attribution** for grant accounting: the Cloud Run
   deployment (Tier 2, not built) would tag spend by requesting
   project/grant.
 - **Audit logging** of every query and every guardrail trigger, for
   research-integrity review.
 - **Human review** gating any output that goes into an actual digest sent
   to a PI or research office, not just this CLI's console.
-- **Eval in CI** (Tier 1.5) — a prompt change to `synthesize` or `validate`
+- **Eval in CI** (Tier 1.5): a prompt change to `synthesize` or `validate`
   should not be mergeable if it regresses citation accuracy or spikes the
   false-refusal rate.
 
 ## Known limitations
 
 - **The validator is itself an LLM**, and therefore has its own error
-  rate — both false negatives (missing a real fabrication) and false
+  rate: both false negatives (missing a real fabrication) and false
   positives (flagging a claim that was actually supported, i.e.
   false-refusal). The eval harness's false-refusal-rate metric exists
   specifically to measure this, because it's the failure mode people
@@ -293,23 +307,23 @@ This demo intentionally does not include:
   with a code-related term, which pulled in unrelated domains (e.g.
   clinical/medical LLM-prompting papers) on phrase overlap alone. The
   query in `ingest/arxiv_client.py` now anchors every prompting-related
-  term to a code term explicitly — worth knowing if you retarget this at a
+  term to a code term explicitly. Worth knowing if you retarget this at a
   different topic.
 - **Embedding drift**: if `gemini-embedding-001` is ever updated, existing
   stored embeddings and new query embeddings could drift out of the same
   space; re-ingesting is the correct fix, not a partial re-embed.
-- **No authentication or multi-user support** — out of scope by design
+- **No authentication or multi-user support**: out of scope by design
   (see the original build brief's Tier 3).
 - **Corpus size is small by design** (400 abstracts on one narrow topic),
-  which is also why no vector index is created — see Architecture.
+  which is also why no vector index is created. See Architecture.
 
 ## Repo hygiene
 
 - Apache 2.0 licensed.
-- No credentials, API keys, or `.env` committed — `.gitignore` blocks all
+- No credentials, API keys, or `.env` committed. `.gitignore` blocks all
   of these; see `.env.example` for the variables you need.
 - `google-adk` is pinned exactly (`requirements.txt`) because ADK 2.0
   shipped breaking changes to the agent API, event model, and session
-  schema — an unpinned dependency here rots fast.
+  schema. An unpinned dependency here rots fast.
 - Personal Google Cloud account, personal time, public arXiv data only. No
   employer affiliation anywhere in this repo.

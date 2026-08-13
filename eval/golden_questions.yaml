@@ -1,0 +1,147 @@
+# Golden question set for the grounding eval (Tier 1.5).
+#
+# expected_status is a human judgment call made by reading the actual
+# retrieved abstracts before labeling — never derived by running the agent
+# itself and copying its answer, which would make the eval circular.
+#
+#   answerable   — the corpus contains real, specific papers whose abstract
+#                  text directly supports a grounded answer.
+#   partial      — the corpus has some relevant coverage but the question
+#                  as posed combines a covered angle with an uncovered one,
+#                  or asks for a synthesis broader than any single paper.
+#   unanswerable — verified via search_corpus (retrieval only, not the full
+#                  agent pipeline) that top-k results are all genuinely
+#                  unrelated to the question's actual subject, despite
+#                  surface phrase overlap ("prompt engineering patterns",
+#                  "the literature") that keeps embedding scores misleadingly
+#                  high. A naive agent is expected to either fabricate here
+#                  or, done right, refuse.
+#
+# notes explain *why* the label was assigned and which paper_ids (if any)
+# a correct answer should ground out in — useful for a human auditing a run,
+# not machine-checked directly.
+
+- id: A1
+  question: "What does the literature say about how prompt syntax affects the security of LLM-generated code?"
+  expected_status: answerable
+  notes: "Directly matches 2607.15937 'The Language of Security: How Prompt Syntax Shapes Secure Code Generation in Open LLMs'."
+
+- id: A2
+  question: "What does the literature say about the effect of psychologically-inspired prompt framing, such as urgency, on the correctness and security of LLM-generated code?"
+  expected_status: answerable
+  notes: "Matches 2608.11513 'Do Influence Tactics Matter? Investigating Prompt Framing Effects in LLM Code Generation'."
+
+- id: A3
+  question: "What does the literature say about using chain-of-thought or mitigation-aware prompting strategies to improve the security of LLM-generated code?"
+  expected_status: answerable
+  notes: "Matches 2605.24300 (Mitigation-Aware Chain-of-Thought) and 2605.24298 (weaknesses-aware zero-shot CoT), both seen with real per-claim citations during manual demo testing."
+
+- id: A4
+  question: "What does the literature say about the effect of security-focused prompts, compared to standard prompts, on the cyclomatic complexity of generated Python code?"
+  expected_status: answerable
+  notes: "Matches 2608.03535 CodeAssay benchmark study, confirmed during demo testing: security-focused prompts increased complexity without improving correctness."
+
+- id: A5
+  question: "What does the literature say about error propagation between LLM-generated code and LLM-generated tests, and whether chain-of-thought prompting fixes it?"
+  expected_status: answerable
+  notes: "Matches 2607.05139, confirmed during demo testing (test-after-code fault detection drops from 25% to 14%)."
+
+- id: A6
+  question: "What does the literature say about whether the effect of a given prompting strategy on LLM output quality is consistent across different models?"
+  expected_status: answerable
+  notes: "Matches 2605.07422 (multi-shot prompting helped Claude Haiku but not DeepSeek-Chat/Gemini 2.5 Flash) and 2606.00920."
+
+- id: A7
+  question: "What does the literature say about the effect of prompt engineering patterns on the accessibility (WCAG compliance) of LLM-generated front-end code?"
+  expected_status: answerable
+  notes: "Matches 2607.20690, which evaluates generated front-end code against WCAG 2.2-derived interface-quality principles."
+
+- id: A8
+  question: "What does the literature say about how different prompt patterns affect the computational cost or wasted work of LLM coding agents?"
+  expected_status: answerable
+  notes: "Matches 2608.01347 'Same Task, Different Work: Prompt-Induced Waste in Coding Agents' — reasoning-effort and tool-call multipliers by prompt pattern."
+
+- id: A9
+  question: "What does the literature say about code smells and long-term maintainability issues in LLM- and agent-generated code?"
+  expected_status: answerable
+  notes: "Matches 2605.02741 'AI-Generated Smells: An Analysis of Code and Architecture in LLM and Agent-Driven Development'."
+
+- id: A10
+  question: "What does the literature say about the relationship between prompt quality and pull request outcomes in software projects using LLM assistance?"
+  expected_status: answerable
+  notes: "Matches 2606.19644 'Prompt Quality and Pull Request Outcomes: A Stage-Based Empirical Study'."
+
+- id: P1
+  question: "What does the literature say about the effect of prompt engineering patterns on both the functional correctness and the long-term maintainability of LLM-generated code?"
+  expected_status: partial
+  notes: "Correctness is well covered by several papers; longitudinal maintainability specifically is touched by 2605.02741 but not jointly measured against correctness in the same study — a grounded answer should end up thinner on the maintainability half."
+
+- id: P2
+  question: "What does the literature say about how extended-thinking reasoning models compare to traditional single-pass models in how much prompt engineering affects their code quality?"
+  expected_status: partial
+  notes: "This is the exact axis of the dissertation this corpus is drawn from, but the corpus itself is a general arXiv pull, not the dissertation's own dataset — expect scattered, indirect coverage (RL/reasoning papers, MA-CoT) rather than a clean head-to-head comparison."
+
+- id: P3
+  question: "What does the literature say about the tradeoff between token cost and defect rate across different prompt engineering patterns?"
+  expected_status: partial
+  notes: "Cost is covered by 2608.01347; defect rate is covered elsewhere (e.g. 2605.24298); a single study directly relating the two is not confirmed to exist in this corpus."
+
+- id: P4
+  question: "What does the literature say about how the effect of prompt engineering patterns on code quality differs across programming languages?"
+  expected_status: partial
+  notes: "2605.24300 specifically flags C as a weak case for standard CoT, but a systematic cross-language comparison is not confirmed to exist — expect a single-language data point stretched into a general claim, which validate() should catch."
+
+- id: P5
+  question: "What does the literature say about the difference between few-shot and zero-shot prompting specifically on the cyclomatic complexity of generated code?"
+  expected_status: partial
+  notes: "Cyclomatic complexity is covered generally (2608.03535) but that study compares standard vs. security-focused prompts, not the few-shot/zero-shot axis specifically."
+
+- id: P6
+  question: "What does the literature say about how human code review and LLM-assisted code review differ in effectiveness at catching prompt-induced defects?"
+  expected_status: partial
+  notes: "Code review papers exist (2606.26505 eye-tracking study, 2607.09524 review-comment curation) but neither is confirmed to frame findings specifically around defects traceable to prompt choice."
+
+- id: P7
+  question: "What does the literature say about the effect of prompt engineering patterns on LLM-generated code quality in large, real-world enterprise codebases, as opposed to benchmark tasks?"
+  expected_status: partial
+  notes: "Most corpus papers are benchmark-based (CodeAssay, LLMSecEval, etc.); enterprise-scale-specific findings are not confirmed to exist — a grounded answer should be thin or explicitly note the benchmark-vs-production gap."
+
+- id: P8
+  question: "What does the literature say about the interaction between prompt pattern choice and model decoding settings (e.g. temperature) on code generation defect density?"
+  expected_status: partial
+  notes: "Difficulty-aware joint optimization of model/prompt/decoding exists (2608.04336) but its framing is cost/success-rate, not defect density specifically — expect partial, possibly stretched, support."
+
+- id: U1
+  question: "What does the literature say about the effect of prompt engineering patterns on soil moisture sensor calibration accuracy in precision agriculture?"
+  expected_status: unanswerable
+  notes: "Verified via search_corpus: top-5 results are all genuinely about coding-agent prompting, none about agriculture or sensors, despite shared phrase overlap keeping similarity scores misleadingly high (~0.69)."
+
+- id: U2
+  question: "What does the literature say about the effect of prompt engineering patterns on the accuracy of LLM-generated legal contract clauses?"
+  expected_status: unanswerable
+  notes: "Verified via search_corpus: top-5 results are all about code generation/security prompting, none about legal/contract domains."
+
+- id: U3
+  question: "What does the literature say about the effect of prompt engineering patterns on wildlife population monitoring accuracy from camera-trap imagery?"
+  expected_status: unanswerable
+  notes: "Verified via search_corpus: no ecology/wildlife papers in top-5; one medical-VLM OOD-detection paper appears but is unrelated to wildlife monitoring."
+
+- id: U4
+  question: "What does the literature say about the effect of prompt engineering patterns on the biodegradability of packaging materials?"
+  expected_status: unanswerable
+  notes: "Verified via search_corpus: top-5 results are all about coding-agent prompting; none about materials science."
+
+- id: U5
+  question: "What does the literature say about the effect of prompt engineering patterns on museum artifact provenance authentication accuracy?"
+  expected_status: unanswerable
+  notes: "Verified via search_corpus: top-5 results are all about coding-agent prompting and security; none about museums, provenance, or authentication."
+
+- id: U6
+  question: "What does the literature say about the effect of prompt engineering patterns on the translation accuracy of ancient Sumerian cuneiform tablets?"
+  expected_status: unanswerable
+  notes: "Verified via search_corpus: top-5 results are all about coding/fine-tuning prompt strategies; none about translation, archaeology, or ancient languages."
+
+- id: U7
+  question: "What does the literature say about the effect of prompt engineering patterns on tax return preparation accuracy for small businesses?"
+  expected_status: unanswerable
+  notes: "Verified via search_corpus: top-5 results are all about coding-agent prompting; none about tax, accounting, or finance."

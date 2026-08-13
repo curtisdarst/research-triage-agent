@@ -2,6 +2,7 @@
 .env
 *.json
 !setup/*.json
+!eval/results/*.json
 credentials/
 *.key
 *.pem
@@ -19,6 +20,7 @@ env/
 .DS_Store
 .vscode/
 .idea/
+.claude/
 
 # Local scratch
 *.log

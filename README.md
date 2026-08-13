@@ -4,9 +4,9 @@
 
 This is a reference implementation, not a research tool and not a product.
 It demonstrates agentic retrieval with an explicit, visible grounding
-guardrail, on a small, real corpus, and it will ship a reproducible eval of
-that guardrail before it is presented as anything more than a demo. See
-[Status](#status) for exactly what is and isn't built yet.
+guardrail, on a small, real corpus, with a reproducible eval of that
+guardrail (see [Eval results](#eval-results)). See [Status](#status) for
+exactly what is and isn't built.
 
 ## What this is not
 
@@ -157,7 +157,7 @@ Enterprise Agent Platform" interchangeably to match current docs.
 | | |
 |---|---|
 | Tier 1 (interview demo) | Built. See Quickstart below. |
-| Tier 1.5 (eval harness + CI gate) | **Not built.** Required before this repo is public. See [`eval/README.md`](eval/README.md). |
+| Tier 1.5 (eval harness + CI gate) | Built. Real results below; see [`eval/README.md`](eval/README.md) for the metric definitions and how to run it against your own corpus. |
 | Tier 2 (Cloud Run deploy, model comparison) | Not built. Local CLI only for now. |
 
 ## Eval results

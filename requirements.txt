@@ -1,0 +1,10 @@
+# Pinned exactly. ADK ships breaking changes across major versions (see README),
+# so this project tracks specific versions rather than ranges.
+google-adk==2.6.3
+google-genai==2.18.0
+google-cloud-bigquery==3.43.0
+db-dtypes==1.7.1
+python-dotenv==1.2.2
+feedparser==6.0.14
+requests==2.34.2
+pydantic==2.13.4

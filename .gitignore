@@ -1,0 +1,25 @@
+# Secrets and local config
+.env
+*.json
+!setup/*.json
+credentials/
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Local scratch
+*.log
+.cache/

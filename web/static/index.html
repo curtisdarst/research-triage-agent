@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research Triage Agent</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    max-width: 800px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    line-height: 1.5;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 0.2rem; }
+  .sub { color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  .buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  button {
+    padding: 0.5rem 1rem;
+    border: 1px solid #888;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  button:hover { background: rgba(128, 128, 128, 0.15); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    border-radius: 6px;
+    border: 1px solid #888;
+    background: transparent;
+    color: inherit;
+    resize: vertical;
+    min-height: 3rem;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 1rem 0; }
+  th, td { text-align: left; padding: 0.3rem 0.6rem; border-bottom: 1px solid rgba(128,128,128,0.3); }
+  #status { color: #888; font-style: italic; margin: 1rem 0; }
+  #answer h2 { font-size: 1.1rem; margin-top: 1.2rem; }
+  #answer li { margin-bottom: 0.4rem; }
+  #summary { color: #888; font-size: 0.85rem; margin-top: 1rem; }
+  code { font-size: 0.85em; }
+</style>
+</head>
+<body>
+
+<h1>Research Triage Agent</h1>
+<p class="sub">Governed agentic RAG demo. ADK + BigQuery + Gemini. Every claim cited, unsupported claims flagged rather than guessed.</p>
+
+<div class="buttons">
+  <button id="btn-happy">Run happy-path demo</button>
+  <button id="btn-gap">Run gap (guardrail) demo</button>
+</div>
+
+<textarea id="question" placeholder="Or ask your own question about the corpus (prompt engineering effects on LLM-generated code quality)..."></textarea>
+<div class="buttons">
+  <button id="btn-ask">Ask</button>
+</div>
+
+<div id="status"></div>
+<div id="trace"></div>
+<div id="answer"></div>
+<div id="summary"></div>
+
+<script>
+const statusEl = document.getElementById('status');
+const traceEl = document.getElementById('trace');
+const answerEl = document.getElementById('answer');
+const summaryEl = document.getElementById('summary');
+const buttons = document.querySelectorAll('button');
+
+function renderMarkdownish(text) {
+  // final_markdown only ever uses "## " headers and "- " bullets.
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h2>${escapeHtml(line.slice(3))}</h2>`;
+    } else if (line.startsWith('- ')) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${escapeHtml(line.slice(2))}</li>`;
+    } else if (line.trim() === '') {
+      if (inList) { html += '</ul>'; inList = false; }
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p>${escapeHtml(line)}</p>`;
+    }
+  }
+  if (inList) html += '</ul>';
+  return html;
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function renderTrace(entries) {
+  let html = '<table><tr><th>#</th><th>tool</th><th>model</th><th>in/out tok</th><th>latency</th><th>cost</th><th>result</th></tr>';
+  entries.forEach((e, i) => {
+    html += `<tr><td>${i + 1}</td><td>${e.tool}</td><td>${e.model || '-'}</td>` +
+      `<td>${e.input_tokens}/${e.output_tokens}</td><td>${e.latency_ms}ms</td>` +
+      `<td>$${e.cost_usd.toFixed(5)}</td><td>${escapeHtml(e.output_summary)}</td></tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
+async function runQuery(body) {
+  buttons.forEach(b => b.disabled = true);
+  statusEl.textContent = 'Running (search -> retrieve -> synthesize -> validate)... typically 20-90s.';
+  traceEl.innerHTML = '';
+  answerEl.innerHTML = '';
+  summaryEl.innerHTML = '';
+
+  try {
+    const resp = await fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      statusEl.textContent = 'Error: ' + (data.error || resp.status);
+      return;
+    }
+    statusEl.textContent = `Question: ${data.question}`;
+    traceEl.innerHTML = renderTrace(data.trace);
+    answerEl.innerHTML = renderMarkdownish(data.answer);
+    summaryEl.textContent =
+      `Total: ${data.total_input_tokens} in / ${data.total_output_tokens} out tokens, ` +
+      `$${data.total_cost_usd.toFixed(5)}, ${data.wall_seconds}s wall clock`;
+  } catch (err) {
+    statusEl.textContent = 'Request failed: ' + err;
+  } finally {
+    buttons.forEach(b => b.disabled = false);
+  }
+}
+
+document.getElementById('btn-happy').addEventListener('click', () => runQuery({ mode: 'happy' }));
+document.getElementById('btn-gap').addEventListener('click', () => runQuery({ mode: 'gap' }));
+document.getElementById('btn-ask').addEventListener('click', () => {
+  const q = document.getElementById('question').value;
+  if (!q.trim()) return;
+  runQuery({ mode: 'custom', question: q });
+});
+</script>
+
+</body>
+</html>

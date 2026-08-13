@@ -1,0 +1,10 @@
+.venv/
+.git/
+.github/
+.env
+*.pyc
+__pycache__/
+eval/
+ingest/
+setup/
+gcloud-install/

@@ -158,7 +158,7 @@ Enterprise Agent Platform" interchangeably to match current docs.
 |---|---|
 | Tier 1 (interview demo) | Built. See Quickstart below. |
 | Tier 1.5 (eval harness + CI gate) | Built. Real results below; see [`eval/README.md`](eval/README.md) for the metric definitions and how to run it against your own corpus. |
-| Tier 2 (Cloud Run deploy, model comparison) | Not built. Local CLI only for now. |
+| Tier 2 (Cloud Run deploy, model comparison) | Cloud Run deploy built (see [Web deployment](#web-deployment-cloud-run)). Model tier comparison not built. |
 
 ## Eval results
 
@@ -241,6 +241,61 @@ python run_demo.py --query "your own research question"
 Each run prints the full tool-call trace (model used, tokens, latency, cost
 per step) before the final answer.
 
+## Web deployment (Cloud Run)
+
+Same agent, over HTTP instead of a CLI (`web/main.py`, one FastAPI app, one
+static HTML page, no build step). Live at
+`research-triage-agent-410914749671.us-central1.run.app` (auth required,
+see below). Deploy from source, no Artifact Registry push needed:
+
+```bash
+gcloud run deploy research-triage-agent \
+  --region=us-central1 \
+  --source=. \
+  --service-account=research-triage-web@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+  --set-env-vars="GCP_PROJECT_ID=YOUR_PROJECT_ID,GCP_REGION=us-central1,BQ_DATASET=research_triage,BQ_TABLE=papers" \
+  --no-allow-unauthenticated \
+  --concurrency=1 \
+  --min-instances=0 \
+  --max-instances=3 \
+  --memory=512Mi
+```
+
+The runtime service account (`research-triage-web`) has only
+`bigquery.dataViewer`, `bigquery.jobUser`, and `aiplatform.user`, created
+the same way as the eval harness's CI service account (see
+[`eval/README.md`](eval/README.md)): no downloaded key, Cloud Run attaches
+the identity directly.
+
+**Deployed with `--no-allow-unauthenticated`**, on purpose: this endpoint
+calls Gemini and BigQuery on this project's billing account per request,
+and there's no rate limiting built in, so a public URL is a real
+cost-abuse surface, not just a security one. Access it via an authenticated
+tunnel instead of a plain link:
+
+```bash
+gcloud run services proxy research-triage-agent --region=us-central1
+```
+
+opens `http://127.0.0.1:8080` locally, authenticated as whoever ran the
+command. Grant `roles/run.invoker` on the service to anyone else who needs
+access.
+
+**Deployed with `--concurrency=1`.** `agent/tools.py` and `agent/trace.py`
+hold per-query state (the retrieval/synthesis handle store, the trace
+recorder) in module-level singletons, reset at the start of each request.
+That's correct for a single-request CLI process, but two concurrent
+requests in the same process would corrupt each other's state.
+`--concurrency=1` means Cloud Run routes one request at a time per
+container instance and spins up separate instances (separate processes)
+under concurrent load, which sidesteps the problem without touching the
+agent code. It is a real constraint, not a free scaling story: request
+volume beyond a few concurrent users would need request-scoped state
+instead of module globals. Out of scope for this demo; see [Production
+hardening](#production-hardening).
+
+Scales to zero when idle, so there's no cost while nobody's using it.
+
 ## Demo script (~3 minutes)
 
 1. **Frame it in ten seconds.** "Research offices want literature triage
@@ -297,12 +352,14 @@ This demo intentionally does not include:
 - **VPC Service Controls** around the BigQuery corpus and the Vertex/Gemini
   Enterprise Agent Platform endpoints, to enforce a data perimeter.
 - **CMEK** (customer-managed encryption keys) on the BigQuery dataset.
-- **Agent Identity and Registry**: this agent has no identity of its own;
-  it runs as whoever's ADC is active. A real deployment gives it a service
-  identity, registers it, and scopes its BigQuery/Vertex IAM roles tightly.
-- **Per-project cost attribution** for grant accounting: the Cloud Run
-  deployment (Tier 2, not built) would tag spend by requesting
-  project/grant.
+- **Agent Registry**: the Cloud Run deployment has its own scoped service
+  identity (`research-triage-web`, BigQuery + Vertex AI roles only, no
+  downloaded key), but it isn't registered anywhere. Local CLI use still
+  runs as whoever's ADC is active, which is fine for a demo but not for a
+  fleet of agents someone else needs to inventory and audit.
+- **Per-project cost attribution** for grant accounting: nothing here tags
+  spend by requesting project or grant. A real deployment would need that
+  before "who's paying for this query" is answerable.
 - **Audit logging** of every query and every guardrail trigger, for
   research-integrity review.
 - **Human review** gating any output that goes into an actual digest sent

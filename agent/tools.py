@@ -335,7 +335,7 @@ def validate(synthesis_id: str, retrieval_id: str) -> dict:
         markdown = (
             "## Could not verify\n\n"
             "No claims could be synthesized from the retrieved papers for this "
-            "question — the corpus does not appear to contain relevant coverage.\n"
+            "question. The corpus does not appear to contain relevant coverage.\n"
         )
         trace.record(
             tool="validate", input_summary=f"synthesis_id={synthesis_id}",
@@ -387,7 +387,7 @@ def validate(synthesis_id: str, retrieval_id: str) -> dict:
             claim_supported[c.id] = True
         else:
             reason = verdict.reasoning if verdict else "not checked"
-            unsupported_lines.append(f"- {c.text} (cited {cite} — {reason})")
+            unsupported_lines.append(f"- {c.text} (cited {cite}: {reason})")
             claim_supported[c.id] = False
 
     parts = []

@@ -9,3 +9,8 @@ feedparser==6.0.14
 requests==2.34.2
 pydantic==2.13.4
 pyyaml==6.0.3
+# Web deployment (Tier 2, Cloud Run). Already transitive deps of google-adk;
+# pinned to the versions already resolved in this project rather than
+# absolute latest, to avoid a resolver conflict with ADK's own constraints.
+fastapi==0.139.2
+uvicorn==0.51.0

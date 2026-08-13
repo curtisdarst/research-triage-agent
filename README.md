@@ -274,12 +274,24 @@ cost-abuse surface, not just a security one. Access it via an authenticated
 tunnel instead of a plain link:
 
 ```bash
+gcloud components install cloud-run-proxy   # one-time, if not already installed
 gcloud run services proxy research-triage-agent --region=us-central1
 ```
 
-opens `http://127.0.0.1:8080` locally, authenticated as whoever ran the
-command. Grant `roles/run.invoker` on the service to anyone else who needs
-access.
+This is a foreground process, authenticated as whoever ran it. Leave the
+terminal open; it forwards `http://127.0.0.1:8080` to the live service for
+as long as it's running, and the page stops working the moment you close
+it or Ctrl-C it (you'll see `Failed to fetch` in the browser console if
+that happens mid-session, that's this tunnel having dropped, not the
+Cloud Run service itself). Anyone else who needs access without running
+their own proxy needs `roles/run.invoker`:
+
+```bash
+gcloud run services add-iam-policy-binding research-triage-agent \
+  --region=us-central1 \
+  --member="user:their-email@example.com" \
+  --role="roles/run.invoker"
+```
 
 **Deployed with `--concurrency=1`.** `agent/tools.py` and `agent/trace.py`
 hold per-query state (the retrieval/synthesis handle store, the trace

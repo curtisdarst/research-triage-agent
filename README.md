@@ -235,6 +235,23 @@ Ingest the corpus (idempotent: re-running updates rather than duplicates):
 python ingest/ingest_arxiv.py --max-results 400
 ```
 
+To point ingest at a different topic entirely, override the query
+(arXiv's own syntax: `cat:` for category, `abs:"phrase"` for an exact
+abstract-text match, `AND`/`OR`/parentheses to combine them; see
+[`ingest/arxiv_client.py`](ingest/arxiv_client.py) for the built-in
+default):
+
+```bash
+python ingest/ingest_arxiv.py --search-query 'cat:cs.CL AND abs:"retrieval augmented generation"'
+```
+
+To wipe the corpus before switching topics (no undo except re-ingesting;
+asks for a typed `clear` confirmation before deleting anything):
+
+```bash
+python ingest/ingest_arxiv.py --clear
+```
+
 Run the demo:
 
 ```bash
@@ -300,14 +317,18 @@ directly. No `owner`, no `editor`, no IAM access, no reach into any other
 GCP resource. If the container were ever compromised, the blast radius is
 bounded to this one BigQuery dataset and Vertex AI quota, not the project.
 
-**The honest gap: ingest didn't get its own authorization tier.**
-`roles/run.invoker` is all-or-nothing at the service level, anyone who can
-query can also trigger ingest. A real production version would separate
-read and write access at the app layer instead of treating "in" and "out"
-as the only two states. There's also no per-caller rate limiting beyond
-the `MAX_INGEST_RESULTS` cap and the ingest lock; auth stops strangers,
-not an authorized caller accidentally running something five times in a
-row.
+**The honest gap: ingest and admin actions didn't get their own
+authorization tier.** `roles/run.invoker` is all-or-nothing at the service
+level, anyone who can query can also trigger ingest or wipe the corpus.
+A real production version would separate read, write, and destructive
+access at the app layer instead of treating "in" and "out" as the only
+two states. The clear-corpus endpoint in particular has no server-side
+confirmation step at all, it trusts the caller entirely; the web UI's
+`confirm()` dialog (naming the live row count) and the CLI's typed-`clear`
+prompt are both client-side conveniences, not a security boundary. There's
+also no per-caller rate limiting beyond the `MAX_INGEST_RESULTS` cap and
+the ingest lock; auth stops strangers, not an authorized caller
+accidentally running something five times in a row.
 
 Access it via an authenticated tunnel rather than a plain link:
 
@@ -346,16 +367,27 @@ hardening](#production-hardening).
 
 Scales to zero when idle, so there's no cost while nobody's using it.
 
-**Ingest is also exposed in the web UI**, behind a collapsed "Admin"
-section on the same page, not a separate route. It calls the same
-`run_ingest()` used by the CLI (`ingest/ingest_arxiv.py`), so it's the
-identical idempotent fetch-embed-upsert pipeline, just triggered by a
-button instead of a terminal command. It's protected by the exact same
-Cloud Run authentication as the query endpoint, nothing new is exposed by
-adding it, but it has its own lock (`_INGEST_LOCK`, separate from
-`_QUERY_LOCK`) since it doesn't touch `agent/tools.py`'s state at all,
-and a server-side cap (`MAX_INGEST_RESULTS = 2000`) so a typo in the
-number field can't trigger an hours-long run.
+**Ingest and corpus management are also exposed in the web UI**, behind a
+collapsed "Admin" section on the same page, not a separate route. It calls
+the same `run_ingest()` used by the CLI (`ingest/ingest_arxiv.py`), so
+it's the identical idempotent fetch-embed-upsert pipeline, just triggered
+by a button instead of a terminal command. The search query field is
+prepopulated from `GET /api/ingest/default-query` (the same
+`SEARCH_QUERY` the CLI defaults to) but editable, so retargeting the
+corpus at a different topic doesn't require touching source code, just
+arXiv's own query syntax (`cat:`, `abs:"phrase"`, `AND`/`OR`). A separate
+"Clear the corpus" control calls `POST /api/admin/clear-corpus`, which
+deletes every row via the same `clear_corpus()` the CLI's `--clear` flag
+uses; the web UI's own confirmation is a `confirm()` dialog naming the
+live row count fetched from `GET /api/admin/corpus-count` immediately
+before asking, not a server-side check (see the honest gap note above).
+Everything in this section is protected by the exact same Cloud Run
+authentication as the query endpoint, nothing new is exposed by adding
+it, but ingest has its own lock (`_INGEST_LOCK`, separate from
+`_QUERY_LOCK`, also held during clear-corpus) since it doesn't touch
+`agent/tools.py`'s state at all, and a server-side cap
+(`MAX_INGEST_RESULTS = 2000`) so a typo in the number field can't trigger
+an hours-long run.
 
 ## Model tier comparison
 

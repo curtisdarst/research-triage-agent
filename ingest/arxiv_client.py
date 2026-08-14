@@ -60,14 +60,22 @@ def _arxiv_id(entry_id_url: str) -> str:
     return tail.split("v")[0] if "v" in tail.rsplit(".", 1)[-1] else tail
 
 
-def fetch_papers(max_results: int = 400) -> list[Paper]:
-    """Fetch up to max_results papers matching SEARCH_QUERY, newest first."""
+def fetch_papers(max_results: int = 400, search_query: str | None = None) -> list[Paper]:
+    """Fetch up to max_results papers matching search_query, newest first.
+
+    search_query defaults to the module-level SEARCH_QUERY (the arXiv API's
+    own query syntax: cat:cs.SE, abs:"exact phrase", AND/OR, parentheses).
+    Pass a different one to point ingest at a different topic entirely
+    without editing this file, both the CLI (--search-query) and the web
+    UI's ingest admin section expose this.
+    """
+    query = search_query if search_query is not None else SEARCH_QUERY
     papers: list[Paper] = []
     start = 0
     while len(papers) < max_results:
         batch_size = min(PAGE_SIZE, max_results - len(papers))
         params = {
-            "search_query": SEARCH_QUERY,
+            "search_query": query,
             "start": start,
             "max_results": batch_size,
             "sortBy": "submittedDate",

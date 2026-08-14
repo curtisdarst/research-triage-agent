@@ -94,8 +94,21 @@
     color: var(--muted);
     font-size: 0.9rem;
   }
+  .admin h3 { font-size: 0.95rem; margin: 1.2rem 0 0.3rem; }
+  .admin h3:first-of-type { margin-top: 0.8rem; }
   .admin p { font-size: 0.85rem; color: var(--muted); margin: 0.6rem 0; }
-  #ingest-status { font-size: 0.85rem; margin-top: 0.6rem; }
+  #ingest-query {
+    width: 100%;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.8rem;
+  }
+  #ingest-status, #clear-status { font-size: 0.85rem; margin-top: 0.6rem; }
+  button.danger {
+    background: #fbeceb;
+    color: var(--danger);
+    border-color: #e3b3ae;
+  }
+  button.danger:hover { background: #e3b3ae; }
 </style>
 </head>
 <body>
@@ -187,13 +200,24 @@
 <div id="summary"></div>
 
 <details class="admin">
-  <summary>Admin: ingest more papers into the corpus</summary>
-  <p>Pulls up to the given number of papers from arXiv into BigQuery. Idempotent: papers already in the corpus get refreshed in place, nothing is duplicated. arXiv rate-limits fetches to about 1 request per 3 seconds per 100 papers, so a large run can take several minutes; this page will wait for it to finish rather than time out early.</p>
+  <summary>Admin: manage the corpus</summary>
+
+  <h3>How ingest picks which papers to pull</h3>
+  <p>Two filters, both applied by arXiv's own search API, not by anything semantic. First, <strong>category</strong>: the query below starts with <code>cat:cs.SE OR cat:cs.CL OR cat:cs.AI</code>, arXiv's own subject classification, set by the submitting authors. Second, <strong>phrase match on the abstract text</strong>: the rest of the query is an OR of specific phrase combinations (<code>abs:"exact phrase"</code>), and a paper is pulled in if any one of them appears literally in its abstract. There's no relevance ranking and no quality filter of any kind, matches are just sorted newest-first and the first N are taken. A paper that's obviously on-topic but phrased differently won't match; a paper that mentions a phrase once in passing will.</p>
+  <p>Edit the query below to point ingest at a different topic entirely, it's arXiv's query syntax: <code>cat:</code> for category, <code>abs:"phrase"</code> for an exact abstract phrase, <code>AND</code> / <code>OR</code> / parentheses to combine them. Left as-is, it re-runs the current topic (prompt engineering effects on LLM-generated code quality) and idempotently refreshes/extends today's corpus rather than duplicating it.</p>
+  <textarea id="ingest-query" rows="4"></textarea>
   <div class="buttons">
     <input type="number" id="ingest-max" value="400" min="1" max="2000">
     <button id="btn-ingest">Ingest</button>
   </div>
   <div id="ingest-status"></div>
+
+  <h3>Clear the corpus</h3>
+  <p>Deletes every paper currently stored, embeddings included. No undo except re-ingesting. Useful before switching to a genuinely different topic, since ingest only ever upserts, it never removes old off-topic papers on its own.</p>
+  <div class="buttons">
+    <button id="btn-clear" class="danger">Clear corpus</button>
+  </div>
+  <div id="clear-status"></div>
 </details>
 
 <script>
@@ -294,10 +318,21 @@ document.getElementById('btn-ask').addEventListener('click', () => {
 });
 
 const ingestStatusEl = document.getElementById('ingest-status');
+const ingestQueryEl = document.getElementById('ingest-query');
+const clearStatusEl = document.getElementById('clear-status');
+
+// Prefill the query field with the built-in default so it's editable
+// in place rather than starting blank; falls back to leaving it blank
+// (with an error note) if the fetch itself fails.
+fetch('/api/ingest/default-query')
+  .then(r => r.json())
+  .then(data => { ingestQueryEl.value = data.search_query; })
+  .catch(() => { ingestQueryEl.placeholder = '(failed to load default query, enter one manually)'; });
 
 document.getElementById('btn-ingest').addEventListener('click', async () => {
   const maxResults = parseInt(document.getElementById('ingest-max').value, 10);
   if (!maxResults || maxResults < 1) return;
+  const searchQuery = ingestQueryEl.value.trim();
 
   buttons.forEach(b => b.disabled = true);
   ingestStatusEl.textContent = `Fetching and embedding up to ${maxResults} papers... this can take several minutes for a large run.`;
@@ -306,7 +341,7 @@ document.getElementById('btn-ingest').addEventListener('click', async () => {
     const resp = await fetch('/api/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ max_results: maxResults }),
+      body: JSON.stringify({ max_results: maxResults, search_query: searchQuery || null }),
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -320,6 +355,39 @@ document.getElementById('btn-ingest').addEventListener('click', async () => {
       `${data.wall_seconds}s wall clock.`;
   } catch (err) {
     ingestStatusEl.textContent = 'Request failed: ' + err;
+  } finally {
+    buttons.forEach(b => b.disabled = false);
+  }
+});
+
+document.getElementById('btn-clear').addEventListener('click', async () => {
+  buttons.forEach(b => b.disabled = true);
+  clearStatusEl.textContent = 'Checking current corpus size...';
+
+  try {
+    const countResp = await fetch('/api/admin/corpus-count');
+    const countData = await countResp.json();
+    const count = countData.count ?? 'an unknown number of';
+
+    const confirmed = window.confirm(
+      `This will permanently delete all ${count} papers currently in the corpus, ` +
+      `embeddings included. There is no undo except re-ingesting. Continue?`
+    );
+    if (!confirmed) {
+      clearStatusEl.textContent = 'Cancelled.';
+      return;
+    }
+
+    clearStatusEl.textContent = 'Clearing...';
+    const resp = await fetch('/api/admin/clear-corpus', { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) {
+      clearStatusEl.textContent = 'Error: ' + (data.error || resp.status);
+      return;
+    }
+    clearStatusEl.textContent = `Done. Deleted ${data.deleted_rows} rows. The corpus is now empty until the next ingest.`;
+  } catch (err) {
+    clearStatusEl.textContent = 'Request failed: ' + err;
   } finally {
     buttons.forEach(b => b.disabled = false);
   }

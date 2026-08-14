@@ -25,12 +25,15 @@ import time
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from google.cloud import bigquery
 from google.genai.errors import ClientError
 from pydantic import BaseModel
 
 from agent.agent import run_query
+from agent.config import load_config
 from agent.trace import trace
-from ingest.ingest_arxiv import run_ingest
+from ingest.arxiv_client import SEARCH_QUERY
+from ingest.ingest_arxiv import clear_corpus, run_ingest
 from run_demo import GAP_QUERY, HAPPY_QUERY
 
 app = FastAPI(title="Research Triage Agent")
@@ -53,6 +56,7 @@ class AskRequest(BaseModel):
 
 class IngestRequest(BaseModel):
     max_results: int = 400
+    search_query: str | None = None  # None = use the built-in default
 
 
 @app.get("/")
@@ -148,7 +152,12 @@ async def ingest(req: IngestRequest) -> JSONResponse:
             # calls) and can take minutes for a large corpus; to_thread
             # keeps it off the event loop rather than blocking the whole
             # app, including /status, for the duration.
-            result = await asyncio.to_thread(run_ingest, req.max_results, lambda _line: None)
+            result = await asyncio.to_thread(
+                run_ingest,
+                req.max_results,
+                search_query=req.search_query,
+                on_progress=lambda _line: None,
+            )
         except ClientError as e:
             if e.code == 429:
                 return JSONResponse(
@@ -170,3 +179,41 @@ async def ingest(req: IngestRequest) -> JSONResponse:
             "wall_seconds": round(wall_seconds, 1),
         }
     )
+
+
+@app.get("/api/ingest/default-query")
+def default_query() -> JSONResponse:
+    """The built-in arXiv search query, so the web UI can prefill an
+    editable field with it instead of duplicating it in JS."""
+    return JSONResponse({"search_query": SEARCH_QUERY})
+
+
+@app.get("/api/admin/corpus-count")
+def corpus_count() -> JSONResponse:
+    config = load_config()
+    bq = bigquery.Client(project=config.project_id)
+    table_id = f"{config.project_id}.{config.dataset}.{config.table}"
+    n = next(iter(bq.query(f"SELECT COUNT(*) AS n FROM `{table_id}`").result()))["n"]
+    return JSONResponse({"count": n})
+
+
+@app.post("/api/admin/clear-corpus")
+async def admin_clear_corpus() -> JSONResponse:
+    """Deletes every row from the papers table. No separate confirmation
+    here beyond Cloud Run's own auth check, this endpoint trusts the
+    caller (the web UI gates it behind a JS confirm() showing the current
+    row count; the CLI's --clear flag has its own text-confirmation
+    prompt) rather than re-implementing confirmation server-side too."""
+    if _INGEST_LOCK.locked():
+        return JSONResponse(
+            {"error": "An ingest is currently running. Wait for it to finish first."},
+            status_code=409,
+        )
+
+    async with _INGEST_LOCK:
+        try:
+            result = await asyncio.to_thread(clear_corpus, lambda _line: None)
+        except Exception as e:  # noqa: BLE001 - surfaced to the caller as JSON, not a bare 500 page
+            return JSONResponse({"error": f"Clear failed: {e}"}, status_code=500)
+
+    return JSONResponse({"deleted_rows": result["deleted_rows"]})

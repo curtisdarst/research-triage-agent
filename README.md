@@ -276,11 +276,41 @@ the same way as the eval harness's CI service account (see
 the identity directly. `--timeout=900` (Cloud Run's default is 300s) gives
 a large ingest run room to finish; see below.
 
-**Deployed with `--no-allow-unauthenticated`**, on purpose: this endpoint
-calls Gemini and BigQuery on this project's billing account per request,
-and there's no rate limiting built in, so a public URL is a real
-cost-abuse surface, not just a security one. Access it via an authenticated
-tunnel instead of a plain link:
+### How this is secured
+
+Two separate mechanisms, worth naming separately since they're easy to
+conflate:
+
+**Who can reach it at all: Cloud Run IAM (`--no-allow-unauthenticated`).**
+Every request, including just loading the page, needs a Google-signed
+identity token, checked by Cloud Run's own infrastructure *before* the
+request reaches the container. This is a platform-level gate, not
+application code, there is no auth middleware in `web/main.py` to get
+wrong. Only principals holding `roles/run.invoker` on this specific
+service can obtain a token that works; by default that's nobody but the
+project owner. This matters here specifically because the endpoint calls
+Gemini and BigQuery on this project's billing account per request with no
+rate limiting built in, so a public URL would be a real cost-abuse
+surface, not just a confidentiality one.
+
+**What it can do once it's in: the runtime service identity.** The
+container runs as `research-triage-web@...`, scoped to exactly four
+roles (`bigquery.dataViewer`, `bigquery.dataEditor`, `bigquery.jobUser`,
+`aiplatform.user`), no downloaded key, Cloud Run attaches the identity
+directly. No `owner`, no `editor`, no IAM access, no reach into any other
+GCP resource. If the container were ever compromised, the blast radius is
+bounded to this one BigQuery dataset and Vertex AI quota, not the project.
+
+**The honest gap: ingest didn't get its own authorization tier.**
+`roles/run.invoker` is all-or-nothing at the service level, anyone who can
+query can also trigger ingest. A real production version would separate
+read and write access at the app layer instead of treating "in" and "out"
+as the only two states. There's also no per-caller rate limiting beyond
+the `MAX_INGEST_RESULTS` cap and the ingest lock; auth stops strangers,
+not an authorized caller accidentally running something five times in a
+row.
+
+Access it via an authenticated tunnel rather than a plain link:
 
 ```bash
 gcloud components install cloud-run-proxy   # one-time, if not already installed

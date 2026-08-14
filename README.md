@@ -263,14 +263,18 @@ gcloud run deploy research-triage-agent \
   --concurrency=1 \
   --min-instances=0 \
   --max-instances=3 \
-  --memory=512Mi
+  --memory=512Mi \
+  --timeout=900
 ```
 
-The runtime service account (`research-triage-web`) has only
-`bigquery.dataViewer`, `bigquery.jobUser`, and `aiplatform.user`, created
+The runtime service account (`research-triage-web`) has
+`bigquery.dataViewer`, `bigquery.dataEditor`, `bigquery.jobUser`, and
+`aiplatform.user` (the `dataEditor` role is for the ingest endpoint below,
+which writes to BigQuery; query-only access wouldn't cover it), created
 the same way as the eval harness's CI service account (see
 [`eval/README.md`](eval/README.md)): no downloaded key, Cloud Run attaches
-the identity directly.
+the identity directly. `--timeout=900` (Cloud Run's default is 300s) gives
+a large ingest run room to finish; see below.
 
 **Deployed with `--no-allow-unauthenticated`**, on purpose: this endpoint
 calls Gemini and BigQuery on this project's billing account per request,
@@ -312,6 +316,17 @@ instead of module globals. Out of scope for this demo; see [Production
 hardening](#production-hardening).
 
 Scales to zero when idle, so there's no cost while nobody's using it.
+
+**Ingest is also exposed in the web UI**, behind a collapsed "Admin"
+section on the same page, not a separate route. It calls the same
+`run_ingest()` used by the CLI (`ingest/ingest_arxiv.py`), so it's the
+identical idempotent fetch-embed-upsert pipeline, just triggered by a
+button instead of a terminal command. It's protected by the exact same
+Cloud Run authentication as the query endpoint, nothing new is exposed by
+adding it, but it has its own lock (`_INGEST_LOCK`, separate from
+`_QUERY_LOCK`) since it doesn't touch `agent/tools.py`'s state at all,
+and a server-side cap (`MAX_INGEST_RESULTS = 2000`) so a typo in the
+number field can't trigger an hours-long run.
 
 ## Model tier comparison
 

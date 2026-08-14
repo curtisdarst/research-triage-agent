@@ -30,17 +30,29 @@ from pydantic import BaseModel
 
 from agent.agent import run_query
 from agent.trace import trace
+from ingest.ingest_arxiv import run_ingest
 from run_demo import GAP_QUERY, HAPPY_QUERY
 
 app = FastAPI(title="Research Triage Agent")
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
 _QUERY_LOCK = asyncio.Lock()
+# Separate from _QUERY_LOCK: ingest doesn't touch agent/tools.py's or
+# agent/trace.py's module-level state at all (it writes straight to
+# BigQuery), so it isn't blocked by an in-flight query. It gets its own
+# lock purely to stop two concurrent ingests from double-fetching arXiv
+# and double-billing embeddings, not for agent-state safety.
+_INGEST_LOCK = asyncio.Lock()
+MAX_INGEST_RESULTS = 2000  # bounds worst-case wall clock and cost per request
 
 
 class AskRequest(BaseModel):
     mode: str  # "happy" | "gap" | "custom"
     question: str | None = None
+
+
+class IngestRequest(BaseModel):
+    max_results: int = 400
 
 
 @app.get("/")
@@ -110,6 +122,51 @@ async def ask(req: AskRequest) -> JSONResponse:
             "total_input_tokens": in_tok,
             "total_output_tokens": out_tok,
             "total_cost_usd": round(trace.total_cost_usd(), 5),
+            "wall_seconds": round(wall_seconds, 1),
+        }
+    )
+
+
+@app.post("/api/ingest")
+async def ingest(req: IngestRequest) -> JSONResponse:
+    if req.max_results < 1 or req.max_results > MAX_INGEST_RESULTS:
+        return JSONResponse(
+            {"error": f"max_results must be between 1 and {MAX_INGEST_RESULTS}"},
+            status_code=400,
+        )
+
+    if _INGEST_LOCK.locked():
+        return JSONResponse(
+            {"error": "An ingest is already running. Wait for it to finish before starting another."},
+            status_code=409,
+        )
+
+    async with _INGEST_LOCK:
+        start = time.perf_counter()
+        try:
+            # run_ingest is synchronous (requests, time.sleep, sync genai
+            # calls) and can take minutes for a large corpus; to_thread
+            # keeps it off the event loop rather than blocking the whole
+            # app, including /status, for the duration.
+            result = await asyncio.to_thread(run_ingest, req.max_results, lambda _line: None)
+        except ClientError as e:
+            if e.code == 429:
+                return JSONResponse(
+                    {"error": "Rate limited by Gemini/Vertex (429 RESOURCE_EXHAUSTED) while embedding. Wait a bit and try again."},
+                    status_code=429,
+                )
+            return JSONResponse({"error": f"Gemini/Vertex API error: {e}"}, status_code=502)
+        except Exception as e:  # noqa: BLE001 - surfaced to the caller as JSON, not a bare 500 page
+            return JSONResponse({"error": f"Ingest failed: {e}"}, status_code=500)
+        wall_seconds = time.perf_counter() - start
+
+    return JSONResponse(
+        {
+            "fetched": result["fetched"],
+            "affected": result["affected"],
+            "total_rows": result["total_rows"],
+            "cost_usd": result["cost_usd"],
+            "tokens": result["tokens"],
             "wall_seconds": round(wall_seconds, 1),
         }
     )

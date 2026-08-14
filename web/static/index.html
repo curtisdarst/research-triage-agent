@@ -47,12 +47,94 @@
   #answer li { margin-bottom: 0.4rem; }
   #summary { color: #888; font-size: 0.85rem; margin-top: 1rem; }
   code { font-size: 0.85em; }
+
+  .explainer {
+    margin: 1.2rem 0 1.6rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid rgba(128,128,128,0.35);
+    border-radius: 8px;
+  }
+  .explainer p { margin: 0 0 0.8rem; font-size: 0.92rem; }
+  .explainer p:last-child { margin-bottom: 0; }
+  .explainer figure { margin: 0.6rem 0; }
+  .explainer svg { width: 100%; height: auto; display: block; }
+  .explainer figcaption { color: #888; font-size: 0.8rem; margin-top: 0.4rem; }
+  .diagram-text { font-size: 12px; }
+  .diagram-label { font-size: 11px; fill: #888; }
 </style>
 </head>
 <body>
 
 <h1>Research Triage Agent</h1>
 <p class="sub">Governed agentic RAG demo. ADK + BigQuery + Gemini. Every claim cited, unsupported claims flagged rather than guessed.</p>
+
+<div class="explainer">
+  <p>Every question below runs through four tools, in order: <code>search_corpus</code> embeds your question and finds the closest papers in BigQuery, <code>retrieve</code> pulls their full abstract text, <code>synthesize</code> (Gemini 2.5 Pro) drafts a claim-by-claim answer citing the papers it used, and <code>validate</code> (Gemini 2.5 Flash) checks each individual claim against the actual text of the paper it cites. A claim only appears under "Findings" if validate confirms the cited abstract really supports it; anything it can't confirm is reported under "Could not verify" instead of being quietly dropped or guessed. Watch the trace table after you run a query, it shows all four calls, the model each one used, and what each one cost.</p>
+  <figure>
+    <svg viewBox="0 0 680 600" role="img" aria-label="Your question passes through search_corpus, retrieve, synthesize, and validate in order; validate checks each claim against its source and routes supported claims to Findings and unconfirmed ones to Could not verify, both of which can appear in the final answer.">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+        </marker>
+      </defs>
+
+      <!-- question -->
+      <rect x="220" y="10" width="240" height="34" rx="17" fill="none" stroke="currentColor"></rect>
+      <text x="340" y="31" text-anchor="middle" class="diagram-text">Your research question</text>
+      <line x1="340" y1="44" x2="340" y2="68" stroke="currentColor" marker-end="url(#arrow)"></line>
+
+      <!-- search_corpus -->
+      <rect x="180" y="68" width="320" height="50" rx="6" fill="none" stroke="currentColor"></rect>
+      <text x="340" y="88" text-anchor="middle" class="diagram-text" font-weight="600">search_corpus</text>
+      <text x="340" y="105" text-anchor="middle" class="diagram-label">embed question, BigQuery VECTOR_SEARCH</text>
+      <line x1="340" y1="118" x2="340" y2="148" stroke="currentColor" marker-end="url(#arrow)"></line>
+      <text x="352" y="136" class="diagram-label">paper_ids</text>
+
+      <!-- retrieve -->
+      <rect x="180" y="148" width="320" height="50" rx="6" fill="none" stroke="currentColor"></rect>
+      <text x="340" y="168" text-anchor="middle" class="diagram-text" font-weight="600">retrieve</text>
+      <text x="340" y="185" text-anchor="middle" class="diagram-label">fetch full abstract text for each id</text>
+      <line x1="340" y1="198" x2="340" y2="228" stroke="currentColor" marker-end="url(#arrow)"></line>
+      <text x="352" y="216" class="diagram-label">retrieval_id</text>
+
+      <!-- synthesize -->
+      <rect x="180" y="228" width="320" height="54" rx="6" fill="none" stroke="currentColor"></rect>
+      <text x="340" y="249" text-anchor="middle" class="diagram-text" font-weight="600">synthesize (Gemini 2.5 Pro)</text>
+      <text x="340" y="266" text-anchor="middle" class="diagram-label">writes claims, cites paper_ids for each</text>
+      <line x1="340" y1="282" x2="340" y2="312" stroke="currentColor" marker-end="url(#arrow)"></line>
+      <text x="352" y="300" class="diagram-label">synthesis_id</text>
+
+      <!-- validate (accent) -->
+      <rect x="180" y="312" width="320" height="54" rx="6" fill="#2f7f8f22" stroke="#2f7f8f" stroke-width="1.5"></rect>
+      <text x="340" y="333" text-anchor="middle" class="diagram-text" font-weight="600">validate (Gemini 2.5 Flash)</text>
+      <text x="340" y="350" text-anchor="middle" class="diagram-label">checks each claim against its cited source text</text>
+
+      <!-- branch -->
+      <line x1="280" y1="366" x2="170" y2="410" stroke="currentColor" marker-end="url(#arrow)"></line>
+      <text x="180" y="392" class="diagram-label">grounded</text>
+      <line x1="400" y1="366" x2="510" y2="410" stroke="currentColor" marker-end="url(#arrow)"></line>
+      <text x="440" y="392" class="diagram-label">not grounded</text>
+
+      <rect x="50" y="410" width="240" height="46" rx="6" fill="none" stroke="currentColor"></rect>
+      <text x="170" y="430" text-anchor="middle" class="diagram-text" font-weight="600">Findings</text>
+      <text x="170" y="446" text-anchor="middle" class="diagram-label">supported claim, cited and linked</text>
+
+      <rect x="390" y="410" width="240" height="46" rx="6" fill="#2f7f8f22" stroke="#2f7f8f" stroke-width="1.5"></rect>
+      <text x="510" y="430" text-anchor="middle" class="diagram-text" font-weight="600">Could not verify</text>
+      <text x="510" y="446" text-anchor="middle" class="diagram-label">gap named, not guessed</text>
+
+      <!-- converge -->
+      <line x1="180" y1="456" x2="300" y2="496" stroke="currentColor" marker-end="url(#arrow)"></line>
+      <line x1="500" y1="456" x2="380" y2="496" stroke="currentColor" marker-end="url(#arrow)"></line>
+
+      <rect x="220" y="500" width="240" height="40" rx="20" fill="none" stroke="currentColor"></rect>
+      <text x="340" y="524" text-anchor="middle" class="diagram-text">Your answer</text>
+      <text x="340" y="560" text-anchor="middle" class="diagram-label">Findings and Could not verify can both appear;</text>
+      <text x="340" y="576" text-anchor="middle" class="diagram-label">unsupported claims are never included as if they were confirmed.</text>
+    </svg>
+    <figcaption>What happens between clicking a button and seeing an answer: four explicit tool calls, with validate deciding per claim, not per query, whether it belongs in Findings or Could not verify.</figcaption>
+  </figure>
+</div>
 
 <div class="buttons">
   <button id="btn-happy">Run happy-path demo</button>

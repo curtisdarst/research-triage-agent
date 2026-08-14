@@ -25,6 +25,7 @@ import time
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from google.genai.errors import ClientError
 from pydantic import BaseModel
 
 from agent.agent import run_query
@@ -70,7 +71,21 @@ async def ask(req: AskRequest) -> JSONResponse:
 
     async with _QUERY_LOCK:
         start = time.perf_counter()
-        answer = await run_query(question)
+        try:
+            answer = await run_query(question)
+        except ClientError as e:
+            if e.code == 429:
+                return JSONResponse(
+                    {
+                        "error": "Rate limited by Gemini/Vertex (429 RESOURCE_EXHAUSTED). "
+                        "This project's quota is easy to hit with back-to-back queries. "
+                        "Wait a bit and try again. See README 'Known limitations'."
+                    },
+                    status_code=429,
+                )
+            return JSONResponse({"error": f"Gemini/Vertex API error: {e}"}, status_code=502)
+        except Exception as e:  # noqa: BLE001 - surfaced to the caller as JSON, not a bare 500 page
+            return JSONResponse({"error": f"Unexpected server error: {e}"}, status_code=500)
         wall_seconds = time.perf_counter() - start
 
         entries = [

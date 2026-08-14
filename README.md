@@ -249,9 +249,8 @@ per step) before the final answer.
 ## Web deployment (Cloud Run)
 
 Same agent, over HTTP instead of a CLI (`web/main.py`, one FastAPI app, one
-static HTML page, no build step). Live at
-`research-triage-agent-410914749671.us-central1.run.app` (auth required,
-see below). Deploy from source, no Artifact Registry push needed:
+static HTML page, no build step). Deploy from source, no Artifact
+Registry push needed:
 
 ```bash
 gcloud run deploy research-triage-agent \

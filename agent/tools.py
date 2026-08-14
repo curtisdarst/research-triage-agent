@@ -28,7 +28,7 @@ from google import genai
 from google.cloud import bigquery
 from google.genai import types
 
-from agent.config import estimate_cost_usd, load_config
+from agent.config import billed_output_tokens, estimate_cost_usd, load_config
 from agent.schemas import SynthesisResult, ValidationResult
 from agent.trace import trace
 
@@ -249,7 +249,7 @@ def _run_synthesis(
     result: SynthesisResult = response.parsed
     latency_ms = (time.perf_counter() - start) * 1000
     in_tok = response.usage_metadata.prompt_token_count or 0
-    out_tok = response.usage_metadata.candidates_token_count or 0
+    out_tok = billed_output_tokens(response.usage_metadata)
     cost = estimate_cost_usd(model, in_tok, out_tok)
     return result, in_tok, out_tok, latency_ms, cost
 
@@ -440,7 +440,7 @@ def validate(synthesis_id: str, retrieval_id: str) -> dict:
 
     latency_ms = (time.perf_counter() - start) * 1000
     in_tok = response.usage_metadata.prompt_token_count or 0
-    out_tok = response.usage_metadata.candidates_token_count or 0
+    out_tok = billed_output_tokens(response.usage_metadata)
     cost = estimate_cost_usd(_config.model_validation, in_tok, out_tok)
     trace.record(
         tool="validate",

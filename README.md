@@ -369,27 +369,31 @@ a subjective read:
 python scripts/compare_models.py
 ```
 
-Real run, 2026-08-13, happy-path question:
+Real run, 2026-08-14, happy-path question (cost figures corrected for
+thinking tokens, see [Cost per query](#cost-per-query); this script calls
+`synthesize`/`validate` directly rather than through the orchestrator, so
+the orchestrator-tracing fix doesn't apply here, there's no orchestrator
+in this path to begin with):
 
 | Model | Claims | Supported | Cost | Latency |
 |---|---|---|---|---|
-| gemini-2.5-flash | 7 | 7 | $0.00423 | 19.7s |
-| gemini-2.5-pro | 5 | 5 | $0.00907 | 29.2s |
+| gemini-2.5-flash | 7 | 7 | $0.01143 | 23.1s |
+| gemini-2.5-pro | 6 | 6 | $0.02583 | 28.2s |
 
-Pro cost 2.1x more and took 1.5x longer. Both digests were fully grounded
+Pro cost 2.3x more and took 1.2x longer. Both digests were fully grounded
 this run (0 unsupported on either side), so this particular comparison
-doesn't show a correctness gap, it shows a completeness one: Pro's digest
-included a finding from a fifth paper (reasoning models outperforming
-non-reasoning models on iterative refinement) that Flash's didn't surface
-at all, and Flash's individual claims read more fragmented, several short,
-narrowly-scoped statements where Pro tended to write one fuller sentence
-covering the same ground. Flash is the right choice for `validate()`,
-where the task is a bounded yes/no check per claim. For `synthesize()`,
-where the task is judging which of several retrieved papers is worth
-including and writing a coherent digest from them, this run is a real,
-measured example of why the README's "why tiered models" reasoning holds:
-paying Pro rates for that judgment call bought a more complete answer, not
-just a slower one.
+doesn't show a correctness gap, it shows a completeness/style one: Flash
+wrote seven more granular, narrowly-scoped claims where Pro covered
+similar ground in six fuller sentences. Flash is the right choice for
+`validate()`, where the task is a bounded yes/no check per claim. For
+`synthesize()`, where the task is judging which of several retrieved
+papers is worth including and writing a coherent digest from them, this
+run is a real, measured example of why the README's "why tiered models"
+reasoning holds: paying Pro rates for that judgment call buys a
+different, arguably more coherent answer, not just a slower one. Claim
+counts and specific findings vary run to run (this is a live model, not a
+fixture), so treat the exact numbers as one measured sample, not a fixed
+guarantee, and re-run it yourself if you want a fresher one.
 
 ## Demo script (~3 minutes)
 
@@ -424,21 +428,49 @@ figures. As of 2026-08-13 pricing (`agent/config.py`, `ai.google.dev/gemini-api/
 | `search_corpus` (embed) | gemini-embedding-001 | $0.15 / 1M input tokens |
 | `synthesize` | gemini-2.5-pro | $1.25 / 1M in, $10.00 / 1M out |
 | `validate` | gemini-2.5-flash | $0.30 / 1M in, $2.50 / 1M out |
+| orchestrator (tool-call sequencing) | gemini-2.5-flash | $0.30 / 1M in, $2.50 / 1M out |
 
-Actual measured runs against the 400-paper corpus, 2026-08-13:
+**A real accounting bug, caught against an actual GCP billing export, not
+in a code review.** Every cost figure this project reported before
+2026-08-14 was an undercount, for two independent reasons, both now
+fixed:
+
+1. 2.5-series models emit internal "thinking" tokens by default
+   (`usage_metadata.thoughts_token_count`), invisible in the response
+   text but billed at the same per-token rate as visible output. Every
+   `out_tok` figure here previously read only `candidates_token_count`.
+   For a one-word test answer, thinking tokens outnumbered visible output
+   135:1. `agent/config.py`'s `billed_output_tokens()` now adds both.
+2. The orchestrator's own tool-sequencing decisions (five Gemini calls
+   per query: one per tool plus a final turn) were never traced at all,
+   only the four named tools' *internal* calls were. `run_query()` now
+   sums `usage_metadata` off every ADK event and records it as its own
+   trace row.
+
+Both were found while investigating why a billing report didn't match
+this README's own numbers, prompted by a direct question about whether
+the charges "added up." They didn't. The fix is in `agent/tools.py`,
+`agent/agent.py`, and `eval/judge.py`; every number below is post-fix.
+
+Actual measured runs against the 400-paper corpus, 2026-08-14:
 
 | Query | Claims | Tokens (in/out) | Cost | Wall clock |
 |---|---|---|---|---|
-| `--demo happy` (answerable) | 6 synthesized, 5 supported, 1 caught by validator | 4,302 / 1,259 | **$0.0103** | 72.2s |
-| `--demo gap` (out of corpus) | 0 synthesized, refused rather than guessed | 2,135 / 9 | **$0.0028** | 26.2s |
+| `--demo happy` (answerable) | 6 synthesized, 6 supported | 12,864 / 5,010 | **$0.0327** | 66.6s |
+| `--demo gap` (out of corpus) | 0 synthesized, refused rather than guessed | 9,641 / 1,248 | **$0.0136** | 27.2s |
 
-The refusal path is both faster and cheaper than a real answer. `synthesize`
-declines to invent claims once it has nothing to ground them in, so
-`validate` has nothing to check and the whole run short-circuits. Cheap
-honesty, not just correct honesty.
+The refusal path is still both faster and cheaper than a real answer,
+that finding held up: `synthesize` declines to invent claims once it has
+nothing to ground them in, so `validate` has nothing to check and the
+whole run short-circuits. Cheap honesty, not just correct honesty. What
+changed is the absolute numbers, both cost roughly 3-5x more than
+previously reported once thinking tokens and orchestrator overhead are
+counted.
 
 Corpus ingest (400 abstracts, one-time, re-run only when refreshing the
-corpus): **$0.017** in embedding calls.
+corpus): **$0.017** in embedding calls. Unaffected by either bug,
+`gemini-embedding-001` doesn't do extended thinking and ingest doesn't
+go through the orchestrator at all.
 
 ## Production hardening
 

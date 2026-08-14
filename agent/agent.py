@@ -19,8 +19,9 @@ from __future__ import annotations
 from google.adk.agents.llm_agent import Agent
 from google.adk.runners import InMemoryRunner
 
-from agent.config import load_config
+from agent.config import billed_output_tokens, estimate_cost_usd, load_config
 from agent.tools import reset_state, retrieve, search_corpus, synthesize, validate
+from agent.trace import trace
 
 _config = load_config()
 
@@ -67,6 +68,28 @@ async def run_query(question: str) -> str:
     reset_state()
     runner = InMemoryRunner(agent=root_agent, app_name="research_triage_agent")
     events = await runner.run_debug(question, quiet=True)
+
+    # The orchestrator's own reasoning (deciding which tool to call next,
+    # once per tool plus a final turn) makes its own Gemini calls and was
+    # never traced at all before this: trace.py only recorded the four
+    # named tools' *internal* model calls, not the sequencing decisions
+    # around them. Each event that represents a model turn carries its own
+    # usage_metadata; sum them into one aggregate trace entry so the
+    # reported per-query cost actually covers every Gemini call a query
+    # makes, not just the ones inside the tool functions.
+    orch_in = sum(e.usage_metadata.prompt_token_count or 0 for e in events if e.usage_metadata)
+    orch_out = sum(billed_output_tokens(e.usage_metadata) for e in events if e.usage_metadata)
+    if orch_in or orch_out:
+        trace.record(
+            tool="orchestrator",
+            input_summary="tool-call sequencing decisions",
+            output_summary=f"{sum(1 for e in events if e.usage_metadata)} model turns",
+            model=_config.model_orchestrator,
+            input_tokens=orch_in,
+            output_tokens=orch_out,
+            latency_ms=0.0,  # run_debug doesn't expose per-event latency
+            cost_usd=estimate_cost_usd(_config.model_orchestrator, orch_in, orch_out),
+        )
 
     # validate()'s tool-call result is read directly, first, rather than
     # trusting the orchestrator's own final text turn as a fallback. The

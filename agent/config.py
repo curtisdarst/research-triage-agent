@@ -74,3 +74,23 @@ def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> floa
     return (input_tokens / 1_000_000) * rates["input"] + (
         output_tokens / 1_000_000
     ) * rates["output"]
+
+
+def billed_output_tokens(usage_metadata) -> int:
+    """candidates_token_count alone undercounts real cost.
+
+    2.5-series models emit internal "thinking" tokens by default
+    (usage_metadata.thoughts_token_count) that are invisible in the
+    response text but billed at the same per-token output rate as visible
+    output (confirmed against a real GCP billing export: the "Thinking
+    Text Output" SKU price matches the standard output SKU price exactly).
+    For a trivial one-word answer, thinking tokens outnumbered visible
+    output tokens 135:1 in one measured case. Every cost figure in this
+    project counted only candidates_token_count before this was caught;
+    call this everywhere output tokens are read for cost accounting.
+    """
+    if usage_metadata is None:
+        return 0
+    return (usage_metadata.candidates_token_count or 0) + (
+        usage_metadata.thoughts_token_count or 0
+    )

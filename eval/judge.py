@@ -20,7 +20,7 @@ from __future__ import annotations
 from google import genai
 from google.genai import types
 
-from agent.config import load_config
+from agent.config import billed_output_tokens, load_config
 from agent.schemas import Claim
 from eval.schemas import JudgeResult, JudgeVerdict
 
@@ -87,5 +87,5 @@ def judge_claims(
     result: JudgeResult = response.parsed
     verdicts = {v.claim_id: v for v in result.verdicts}
     in_tok = response.usage_metadata.prompt_token_count or 0
-    out_tok = response.usage_metadata.candidates_token_count or 0
+    out_tok = billed_output_tokens(response.usage_metadata)
     return verdicts, in_tok, out_tok

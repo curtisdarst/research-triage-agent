@@ -225,6 +225,35 @@ are actually responsive to the question asked.
 """
 
 
+def _run_synthesis(
+    question: str, papers: list[dict], model: str
+) -> tuple[SynthesisResult, int, int, float, float]:
+    """Model-agnostic synthesis call. Returns (result, input_tokens, output_tokens, latency_ms, cost_usd)."""
+    start = time.perf_counter()
+    sources_block = "\n\n".join(
+        f"paper_id: {p['paper_id']}\ntitle: {p['title']}\nabstract: {p['abstract']}"
+        for p in papers
+    )
+    prompt = f"Research question: {question}\n\nRetrieved abstracts:\n\n{sources_block}"
+
+    response = _genai_client().models.generate_content(
+        model=model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=_SYNTHESIS_INSTRUCTION,
+            response_mime_type="application/json",
+            response_schema=SynthesisResult,
+            temperature=0.3,
+        ),
+    )
+    result: SynthesisResult = response.parsed
+    latency_ms = (time.perf_counter() - start) * 1000
+    in_tok = response.usage_metadata.prompt_token_count or 0
+    out_tok = response.usage_metadata.candidates_token_count or 0
+    cost = estimate_cost_usd(model, in_tok, out_tok)
+    return result, in_tok, out_tok, latency_ms, cost
+
+
 def synthesize(question: str, retrieval_id: str) -> dict:
     """Writes a claim-by-claim digest answering the question from retrieved papers.
 
@@ -236,6 +265,22 @@ def synthesize(question: str, retrieval_id: str) -> dict:
         dict: status, 'synthesis_id' (pass this to validate), and
             'claim_count', or 'error_message' if retrieval_id is unknown.
     """
+    return _synthesize_impl(question, retrieval_id, _config.model_synthesis)
+
+
+def synthesize_with_model(question: str, retrieval_id: str, model: str) -> dict:
+    """Same as synthesize(), but the caller picks the model explicitly.
+
+    Not registered as an ADK tool, the model used at each step is a config
+    decision (see agent/config.py), not something the orchestrator should
+    be able to pick per query. Used by scripts/compare_models.py to run the
+    same retrieval through multiple synthesis models for a quality/cost
+    comparison. See docstring on synthesize() for the return shape.
+    """
+    return _synthesize_impl(question, retrieval_id, model)
+
+
+def _synthesize_impl(question: str, retrieval_id: str, model: str) -> dict:
     papers = _store.get(retrieval_id)
     if papers is None:
         return {"status": "error", "error_message": f"unknown retrieval_id {retrieval_id!r}"}
@@ -250,37 +295,16 @@ def synthesize(question: str, retrieval_id: str) -> dict:
         )
         return {"status": "success", "synthesis_id": synthesis_id, "claim_count": 0}
 
-    start = time.perf_counter()
-    sources_block = "\n\n".join(
-        f"paper_id: {p['paper_id']}\ntitle: {p['title']}\nabstract: {p['abstract']}"
-        for p in papers
-    )
-    prompt = f"Research question: {question}\n\nRetrieved abstracts:\n\n{sources_block}"
-
-    response = _genai_client().models.generate_content(
-        model=_config.model_synthesis,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=_SYNTHESIS_INSTRUCTION,
-            response_mime_type="application/json",
-            response_schema=SynthesisResult,
-            temperature=0.3,
-        ),
-    )
-    result: SynthesisResult = response.parsed
+    result, in_tok, out_tok, latency_ms, cost = _run_synthesis(question, papers, model)
 
     synthesis_id = _new_id("y")
     _store[synthesis_id] = result
 
-    latency_ms = (time.perf_counter() - start) * 1000
-    in_tok = response.usage_metadata.prompt_token_count or 0
-    out_tok = response.usage_metadata.candidates_token_count or 0
-    cost = estimate_cost_usd(_config.model_synthesis, in_tok, out_tok)
     trace.record(
         tool="synthesize",
         input_summary=f"question={question!r} retrieval_id={retrieval_id}",
         output_summary=f"synthesis_id={synthesis_id}, {len(result.claims)} claims",
-        model=_config.model_synthesis,
+        model=model,
         input_tokens=in_tok,
         output_tokens=out_tok,
         latency_ms=latency_ms,

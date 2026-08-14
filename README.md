@@ -162,8 +162,8 @@ Enterprise Agent Platform" interchangeably to match current docs.
 | | |
 |---|---|
 | Tier 1 (interview demo) | Built. See Quickstart below. |
-| Tier 1.5 (eval harness + CI gate) | Built. Real results below; see [`eval/README.md`](eval/README.md) for the metric definitions and how to run it against your own corpus. |
-| Tier 2 (Cloud Run deploy, model comparison) | Cloud Run deploy built (see [Web deployment](#web-deployment-cloud-run)). Model tier comparison not built. |
+| Tier 1.5 (eval harness) | Built. Real results below; see [`eval/README.md`](eval/README.md) for the metric definitions and how to run it against your own corpus. No CI gate, running it is a manual step before merging a prompt change. |
+| Tier 2 (Cloud Run deploy, model comparison) | Built. See [Web deployment](#web-deployment-cloud-run) and [Model tier comparison](#model-tier-comparison). |
 
 ## Eval results
 
@@ -313,6 +313,39 @@ hardening](#production-hardening).
 
 Scales to zero when idle, so there's no cost while nobody's using it.
 
+## Model tier comparison
+
+The same retrieval, synthesized once by Flash and once by Pro, so the only
+variable is the synthesis model. Both outputs then go through the same
+Flash `validate()` guardrail, so "quality" is a measured claim count, not
+a subjective read:
+
+```bash
+python scripts/compare_models.py
+```
+
+Real run, 2026-08-13, happy-path question:
+
+| Model | Claims | Supported | Cost | Latency |
+|---|---|---|---|---|
+| gemini-2.5-flash | 7 | 7 | $0.00423 | 19.7s |
+| gemini-2.5-pro | 5 | 5 | $0.00907 | 29.2s |
+
+Pro cost 2.1x more and took 1.5x longer. Both digests were fully grounded
+this run (0 unsupported on either side), so this particular comparison
+doesn't show a correctness gap, it shows a completeness one: Pro's digest
+included a finding from a fifth paper (reasoning models outperforming
+non-reasoning models on iterative refinement) that Flash's didn't surface
+at all, and Flash's individual claims read more fragmented, several short,
+narrowly-scoped statements where Pro tended to write one fuller sentence
+covering the same ground. Flash is the right choice for `validate()`,
+where the task is a bounded yes/no check per claim. For `synthesize()`,
+where the task is judging which of several retrieved papers is worth
+including and writing a coherent digest from them, this run is a real,
+measured example of why the README's "why tiered models" reasoning holds:
+paying Pro rates for that judgment call bought a more complete answer, not
+just a slower one.
+
 ## Demo script (~3 minutes)
 
 1. **Frame it in ten seconds.** "Research offices want literature triage
@@ -381,9 +414,11 @@ This demo intentionally does not include:
   research-integrity review.
 - **Human review** gating any output that goes into an actual digest sent
   to a PI or research office, not just this CLI's console.
-- **Eval in CI** (Tier 1.5): a prompt change to `synthesize` or `validate`
-  should not be mergeable if it regresses citation accuracy or spikes the
-  false-refusal rate.
+- **Eval in CI**: the eval harness exists (see [Eval results](#eval-results))
+  but isn't wired into a merge gate. A prompt change to `synthesize` or
+  `validate` can currently regress citation accuracy or spike the
+  false-refusal rate without anything blocking the merge; running
+  `eval/run_eval.py` before merging such a change is a manual step.
 
 ## Known limitations
 

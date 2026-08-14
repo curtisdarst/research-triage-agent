@@ -104,11 +104,16 @@ large payloads between calls. It only ever sees small ids.
 
 What is *not* left to the orchestrator's discretion is the guardrail's
 visibility: `validate` assembles the final answer text itself (supported
-findings, then an explicit "Could not verify" section), and the
-orchestrator is instructed to return that output verbatim.
-Correctness-critical formatting is deterministic code; only the sequencing
-decision is agentic. This is what actually happens inside that one
-`validate` call:
+findings, then an explicit "Could not verify" section). The orchestrator
+is instructed to return that output verbatim, but instruction alone
+turned out not to be enough, in testing it was observed silently dropping
+the "## Findings" section while keeping "## Could not verify", with no
+error. `run_query` (`agent/agent.py`) does not trust the orchestrator's
+own text at all: it reads `validate`'s tool-call result directly and only
+falls back to the orchestrator's text if `validate` never ran.
+Correctness-critical formatting is deterministic code, read by code, not
+by convention; only the sequencing decision is agentic. This is what
+actually happens inside that one `validate` call:
 
 ```mermaid
 sequenceDiagram
@@ -129,7 +134,7 @@ sequenceDiagram
     else one or more unsupported
         V-->>O: final_markdown = "## Findings" (supported claims)<br/>+ "## Could not verify" (named gap, not dropped)
     end
-    Note over V,O: The orchestrator is instructed to return this text<br/>verbatim. It cannot paraphrase the gap away.
+    Note over V,O: run_query() reads this directly from the tool-call result,<br/>it does not depend on the orchestrator repeating it correctly.
 ```
 
 **Why tiered models**: `search_corpus`'s embedding call and `validate`'s
@@ -394,12 +399,17 @@ This demo intentionally does not include:
   project's default per-minute Gemini/Vertex quota is easy to hit if you
   run several queries back to back (you'll see `429 RESOURCE_EXHAUSTED`).
   Space queries out, or request a quota increase, if you're demoing
-  multiple runs in quick succession. Separately: the orchestrator's own
-  final "echo the answer" turn occasionally doesn't come through even on a
-  successful run (same class of transient issue); `run_query` in
-  `agent/agent.py` falls back to reading `validate`'s output directly from
-  the tool-call event rather than depending on the orchestrator to repeat
-  it, so the answer still surfaces reliably either way.
+  multiple runs in quick succession.
+- **The orchestrator's final text turn is not trustworthy on its own.**
+  It's instructed to echo `validate()`'s `final_markdown` verbatim, but
+  has been observed doing the opposite: silently dropping the entire "##
+  Findings" section while keeping "## Could not verify", with no error and
+  a non-empty response. `run_query` in `agent/agent.py` does not treat the
+  orchestrator's text as authoritative at all; it reads `validate()`'s
+  tool-call result directly and only falls back to the orchestrator's own
+  text if `validate()` never ran. That is what actually makes "the
+  orchestrator cannot paraphrase the gap away" true, not the instruction
+  by itself, an instruction alone was demonstrably not enough.
 - **arXiv abstract search is loose.** An early version of the ingest query
   used bare terms like `"chain-of-thought"` without requiring co-occurrence
   with a code-related term, which pulled in unrelated domains (e.g.

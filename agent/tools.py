@@ -373,9 +373,15 @@ def validate(synthesis_id: str, retrieval_id: str) -> dict:
     claim_supported: dict[int, bool] = {}
     for c in result.claims:
         verdict = verdicts.get(c.id)
-        cite = " ".join(f"[{pid}]" for pid in c.paper_ids)
-        # A cited paper_id that never made it into the retrieved set at all
-        # is itself a fabrication signal, independent of the validator LLM.
+        # Link to the paper's real arXiv URL when we actually retrieved it,
+        # so a reader can click through and verify the claim themselves.
+        # A cited id with no URL to link to (never retrieved) is left as
+        # plain bracketed text, it's flagged as a fabrication signal below,
+        # not something to make clickable.
+        cite = " ".join(
+            f"[{pid}]({papers_by_id[pid]['url']})" if pid in papers_by_id else f"[{pid}]"
+            for pid in c.paper_ids
+        )
         unknown_ids = [pid for pid in c.paper_ids if pid not in papers_by_id]
         if unknown_ids:
             unsupported_lines.append(

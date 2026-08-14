@@ -68,20 +68,18 @@ async def run_query(question: str) -> str:
     runner = InMemoryRunner(agent=root_agent, app_name="research_triage_agent")
     events = await runner.run_debug(question, quiet=True)
 
-    for event in reversed(events):
-        if not event.content or not event.content.parts:
-            continue
-        text = "".join(p.text for p in event.content.parts if getattr(p, "text", None))
-        if text.strip():
-            return text
-
-    # Fallback: the orchestrator is instructed to echo validate()'s
-    # final_markdown verbatim as its own final turn, but that last
-    # inference call occasionally doesn't come through (rate limiting on a
-    # fresh project's default quota, mainly — see README "Known
-    # limitations"). validate() already produced the complete, correctly
-    # formatted answer as a tool result, so read it directly from the event
-    # stream instead of returning nothing.
+    # validate()'s tool-call result is read directly, first, rather than
+    # trusting the orchestrator's own final text turn as a fallback. The
+    # instruction above tells the orchestrator to echo final_markdown
+    # verbatim, but in practice it has been observed to instead paraphrase
+    # or partially drop it (e.g. silently omitting the "## Findings"
+    # section while keeping "## Could not verify") even when nothing
+    # failed and both sections had real content. That is silent corruption
+    # of the guardrail's output, not a missing-response edge case, so it
+    # cannot be treated as a fallback path: reading validate()'s actual
+    # output is the only way "the orchestrator cannot paraphrase the gap
+    # away" is actually true by construction, rather than merely
+    # instructed and hoped for.
     for event in reversed(events):
         if not event.content or not event.content.parts:
             continue
@@ -92,4 +90,14 @@ async def run_query(question: str) -> str:
                 if markdown:
                     return markdown
 
-    return "(no final response produced — validate() may not have completed; see trace above)"
+    # Fallback: validate() never completed (e.g. an earlier tool call
+    # errored out before reaching it). Return whatever final text turn the
+    # orchestrator did produce, if any, rather than nothing.
+    for event in reversed(events):
+        if not event.content or not event.content.parts:
+            continue
+        text = "".join(p.text for p in event.content.parts if getattr(p, "text", None))
+        if text.strip():
+            return text
+
+    return "(no final response produced. validate() may not have completed; see trace above)"

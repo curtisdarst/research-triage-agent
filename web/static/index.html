@@ -87,12 +87,12 @@ function renderMarkdownish(text) {
       html += `<h2>${escapeHtml(line.slice(3))}</h2>`;
     } else if (line.startsWith('- ')) {
       if (!inList) { html += '<ul>'; inList = true; }
-      html += `<li>${escapeHtml(line.slice(2))}</li>`;
+      html += `<li>${linkifyCitations(escapeHtml(line.slice(2)))}</li>`;
     } else if (line.trim() === '') {
       if (inList) { html += '</ul>'; inList = false; }
     } else {
       if (inList) { html += '</ul>'; inList = false; }
-      html += `<p>${escapeHtml(line)}</p>`;
+      html += `<p>${linkifyCitations(escapeHtml(line))}</p>`;
     }
   }
   if (inList) html += '</ul>';
@@ -103,6 +103,17 @@ function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+// [2605.24300](https://arxiv.org/abs/2605.24300) -> a real clickable link,
+// so a claim's citation can be verified against the source paper directly.
+// Runs on already-escaped text, so this only ever matches literal
+// "[...](...)" text, never anything that could inject markup.
+function linkifyCitations(escapedText) {
+  return escapedText.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">[$1]</a>'
+  );
 }
 
 function renderTrace(entries) {

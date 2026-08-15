@@ -117,6 +117,15 @@
     border-color: #e3b3ae;
   }
   button.danger:hover { background: #e3b3ae; }
+  .footer-note {
+    margin-top: 2.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .footer-note code { font-size: 0.7rem; }
+  .footer-note a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -227,6 +236,10 @@
   </div>
   <div id="clear-status"></div>
 </details>
+
+<div class="footer-note">
+  <p>Ingest uses arXiv's public API for personal, non-commercial, open-source use, independent from arXiv: no arXiv branding or claimed affiliation, metadata only (titles, authors, abstracts, ids), no hosting or redistribution of PDFs or source files, and no more than one request every three seconds on a single connection (<code>REQUEST_DELAY_SECONDS = 3.0</code> in <code>ingest/arxiv_client.py</code>). See arXiv's <a href="https://info.arxiv.org/help/api/index.html" target="_blank" rel="noopener">API access policy</a> and <a href="https://info.arxiv.org/help/api/tou.html" target="_blank" rel="noopener">Terms of Use</a>. Thank you to arXiv for use of its open access interoperability.</p>
+</div>
 
 <script>
 const statusEl = document.getElementById('status');

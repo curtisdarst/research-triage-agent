@@ -583,3 +583,39 @@ This demo intentionally does not include:
   schema. An unpinned dependency here rots fast.
 - Personal Google Cloud account, personal time, public arXiv data only. No
   employer affiliation anywhere in this repo.
+
+## arXiv API usage and terms
+
+`ingest/arxiv_client.py` calls arXiv's public API (`export.arxiv.org/api/query`)
+as a personal, non-commercial, open-source project, under [arXiv's API access
+policy](https://info.arxiv.org/help/api/index.html) and [Terms of
+Use](https://info.arxiv.org/help/api/tou.html). How this project fits inside
+them, plainly:
+
+- **Independent, not affiliated.** arXiv's access policy places
+  noncommercial, open-source projects that use the public API without
+  requiring staff assistance, and without arXiv branding, in a category it
+  describes as "entirely independent from arXiv." This repo does exactly
+  that: no arXiv name or logo anywhere, no claim of endorsement, sponsorship,
+  or partnership.
+- **Metadata only, nothing rehosted.** `fetch_papers()` retrieves descriptive
+  metadata (title, authors, abstract, published date, arXiv id), never a PDF
+  or source file. The stored `url` field points back to the paper's official
+  `arxiv.org/abs/...` page rather than serving the paper from this project's
+  own infrastructure, in line with the Terms of Use's restriction on
+  redistributing e-print content from your own servers.
+- **Rate limiting enforced in code, not just promised in prose.** The Terms
+  require no more than one request every three seconds, on a single
+  connection, with no workaround via parallel requests. `REQUEST_DELAY_SECONDS
+  = 3.0` in `ingest/arxiv_client.py` is that limit, enforced by a `time.sleep`
+  between sequential `requests.get()` calls; there is no concurrency anywhere
+  in the fetch path that could violate it.
+- **Attribution.** Per arXiv's request: "Thank you to arXiv for use of its
+  open access interoperability."
+
+If this project's ingest ever moved from a manual, one-off corpus refresh to
+a scheduled job pulling continuously, both documents would be worth
+re-reading, the access category this project currently sits in assumes
+occasional, human-triggered use, not a standing service. Re-reading a terms
+page is cheap; getting rate-limited by shared research infrastructure other
+people depend on is not.

@@ -144,6 +144,8 @@ def run_ingest(max_results: int, search_query: str | None = None, on_progress=pr
     on_progress(f"Fetching up to {max_results} papers from arXiv...")
     papers = fetch_papers(max_results=max_results, search_query=search_query)
     on_progress(f"Fetched {len(papers)} papers.")
+    for p in papers:
+        on_progress(f"  - [{p.id}] {p.title}")
     if not papers:
         return {"fetched": 0, "affected": 0, "total_rows": None, "cost_usd": 0.0, "tokens": 0}
 

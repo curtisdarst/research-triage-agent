@@ -7,133 +7,268 @@
 <style>
   :root {
     color-scheme: light;
+    --bg-page: #eef2f5;
     --bg: #ffffff;
-    --bg-soft: #f6f8f9;
-    --fg: #16191c;
-    --muted: #5a6570;
-    --border: #d7dde2;
-    --accent: #21707f;
-    --accent-bg: #e6f1f3;
+    --bg-soft: #f3f6f8;
+    --bg-inset: #eef2f5;
+    --fg: #14181c;
+    --muted: #5b6672;
+    --muted-soft: #8892a0;
+    --border: #dde3e9;
+    --border-soft: #e8ecf0;
+    --accent: #1f6f7e;
+    --accent-strong: #16535f;
+    --accent-bg: #e5f1f3;
     --accent-border: #a9cdd4;
     --danger: #a4342a;
+    --danger-bg: #fbeceb;
+    --danger-border: #e3b3ae;
+    --radius-lg: 14px;
+    --radius: 10px;
+    --radius-sm: 7px;
+    --shadow-sm: 0 1px 2px rgba(20, 24, 28, 0.04);
+    --shadow-md: 0 2px 6px rgba(20, 24, 28, 0.05), 0 10px 30px rgba(20, 24, 28, 0.06);
   }
+  * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
-    max-width: 800px;
-    margin: 2rem auto;
-    padding: 0 1rem;
-    line-height: 1.5;
-    background: var(--bg);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 4rem;
+    line-height: 1.55;
+    background: var(--bg-page);
     color: var(--fg);
-  }
-  h1 { font-size: 1.4rem; margin-bottom: 0.2rem; color: var(--fg); }
-  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
-  .buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-  button {
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--accent-border);
-    border-radius: 6px;
-    background: var(--accent-bg);
-    color: var(--accent);
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 0.9rem;
-  }
-  button:hover { background: var(--accent-border); }
-  button:disabled { opacity: 0.5; cursor: default; }
-  textarea, input[type="number"] {
-    box-sizing: border-box;
-    padding: 0.5rem;
-    font-family: inherit;
-    font-size: 0.9rem;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg);
-  }
-  textarea { width: 100%; resize: vertical; min-height: 3rem; }
-  input[type="number"] { width: 6rem; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 1rem 0; }
-  th, td { text-align: left; padding: 0.3rem 0.6rem; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 600; }
-  #status { color: var(--muted); font-style: italic; margin: 1rem 0; }
-  #answer h2 { font-size: 1.1rem; margin-top: 1.2rem; color: var(--accent); }
-  #answer li { margin-bottom: 0.4rem; }
-  #answer a { color: var(--accent); }
-  #summary { color: var(--muted); font-size: 0.85rem; margin-top: 1rem; }
-  code {
-    font-size: 0.85em;
-    background: var(--bg-soft);
-    padding: 0.05rem 0.3rem;
-    border-radius: 3px;
   }
 
-  .explainer {
-    margin: 1.2rem 0 1.6rem;
-    padding: 1rem 1.1rem;
-    background: var(--bg-soft);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+  a { color: var(--accent); }
+  a:hover { color: var(--accent-strong); }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
-  .explainer p { margin: 0 0 0.8rem; font-size: 0.92rem; }
+
+  .kicker {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    margin-bottom: 0.9rem;
+  }
+  h1 {
+    font-size: 1.85rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.4rem;
+    color: var(--fg);
+  }
+  .sub { color: var(--muted); font-size: 0.98rem; margin: 0 0 2rem; max-width: 56ch; }
+
+  .card {
+    background: var(--bg);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 1.5rem 1.6rem;
+    margin-bottom: 1.5rem;
+  }
+  .card > *:last-child { margin-bottom: 0; }
+  .card-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-soft);
+    margin: 0 0 1rem;
+  }
+
+  .buttons { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .buttons:last-child { margin-bottom: 0; }
+
+  button, .btn {
+    appearance: none;
+    padding: 0.6rem 1.05rem;
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    background: var(--accent-bg);
+    color: var(--accent-strong);
+    font-weight: 600;
+    font-size: 0.9rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 60ms ease;
+  }
+  button:hover { background: #d7ebee; border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.5; cursor: default; transform: none; }
+
+  button.primary, #btn-ask, #btn-ingest {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+    box-shadow: var(--shadow-sm);
+  }
+  button.primary:hover, #btn-ask:hover, #btn-ingest:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+
+  button.danger {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border-color: var(--danger-border);
+  }
+  button.danger:hover { background: var(--danger-border); }
+
+  textarea, input[type="number"] {
+    box-sizing: border-box;
+    padding: 0.6rem 0.7rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  textarea:focus, input[type="number"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-bg);
+    outline: none;
+  }
+  textarea { width: 100%; resize: vertical; min-height: 3.2rem; margin-bottom: 0.85rem; }
+  input[type="number"] { width: 6.5rem; }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    margin: 1.1rem 0;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 0.83rem; min-width: 480px; }
+  th, td { text-align: left; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border-soft); white-space: nowrap; }
+  th:last-child, td:last-child { white-space: normal; }
+  th {
+    color: var(--muted-soft);
+    font-weight: 700;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: var(--bg-soft);
+  }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--bg-soft); }
+  td:nth-child(4), td:nth-child(5), td:nth-child(6) { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  #status { color: var(--muted); font-style: italic; margin: 0.2rem 0 1rem; }
+  #answer h2 {
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin: 1.4rem 0 0.6rem;
+    color: var(--accent-strong);
+  }
+  #answer h2:first-child { margin-top: 0; }
+  #answer ul { margin: 0; padding-left: 1.3rem; }
+  #answer li { margin-bottom: 0.55rem; }
+  #answer a {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.82em;
+    color: var(--accent-strong);
+    background: var(--accent-bg);
+    border-radius: 4px;
+    padding: 0.05rem 0.32rem;
+    text-decoration: none;
+  }
+  #answer a:hover { background: var(--accent-border); }
+  #summary { color: var(--muted); font-size: 0.85rem; margin-top: 1.1rem; padding-top: 1rem; border-top: 1px dashed var(--border); }
+  code {
+    font-size: 0.85em;
+    font-family: ui-monospace, Consolas, monospace;
+    background: var(--bg-soft);
+    padding: 0.08rem 0.35rem;
+    border-radius: 4px;
+  }
+
+  .explainer p { margin: 0 0 0.9rem; font-size: 0.94rem; }
   .explainer p:last-child { margin-bottom: 0; }
-  .explainer figure { margin: 0.6rem 0; }
+  .explainer figure { margin: 1rem 0 0.4rem; padding: 0.9rem; background: var(--bg-inset); border-radius: var(--radius); }
   .explainer svg { width: 100%; height: auto; display: block; color: var(--fg); }
-  .explainer figcaption { color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem; }
+  .explainer figcaption { color: var(--muted); font-size: 0.8rem; margin-top: 0.6rem; }
   .diagram-text { font-size: 12px; }
   .diagram-label { font-size: 11px; fill: var(--muted); }
 
-  .admin {
-    margin-top: 2.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-  }
+  details.admin { padding: 0; }
+  details.admin[open] { padding-bottom: 0.1rem; }
   .admin summary {
     cursor: pointer;
-    font-weight: 600;
-    color: var(--muted);
-    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--fg);
+    font-size: 0.95rem;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
-  .admin h3 { font-size: 0.95rem; margin: 1.2rem 0 0.3rem; }
-  .admin h3:first-of-type { margin-top: 0.8rem; }
-  .admin p { font-size: 0.85rem; color: var(--muted); margin: 0.6rem 0; }
+  .admin summary::-webkit-details-marker { display: none; }
+  .admin summary::before {
+    content: "\25B8";
+    color: var(--muted-soft);
+    transition: transform 120ms ease;
+    display: inline-block;
+  }
+  details.admin[open] summary::before { transform: rotate(90deg); }
+  .admin h3 { font-size: 0.92rem; font-weight: 700; margin: 1.4rem 0 0.4rem; }
+  .admin summary ~ h3:first-of-type { margin-top: 1.3rem; }
+  .admin p { font-size: 0.86rem; color: var(--muted); margin: 0.55rem 0 0.9rem; }
   #ingest-query {
     width: 100%;
     font-family: ui-monospace, Consolas, monospace;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
+    background: var(--bg-inset);
   }
-  #clear-status { font-size: 0.85rem; margin-top: 0.6rem; }
+  #clear-status { font-size: 0.85rem; margin-top: 0.7rem; }
   #ingest-status {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-family: ui-monospace, Consolas, monospace;
-    margin-top: 0.6rem;
+    margin-top: 0.7rem;
+    padding: 0.7rem 0.85rem;
+    background: var(--bg-inset);
+    border-radius: var(--radius-sm);
     white-space: pre-wrap;
     max-height: 10rem;
     overflow-y: auto;
   }
-  button.danger {
-    background: #fbeceb;
-    color: var(--danger);
-    border-color: #e3b3ae;
-  }
-  button.danger:hover { background: #e3b3ae; }
+  #ingest-status:empty { display: none; }
+
   .footer-note {
-    margin-top: 2.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
+    box-shadow: none;
+    background: transparent;
+    border: none;
+    padding: 1rem 0.2rem 0;
     font-size: 0.75rem;
-    color: var(--muted);
+    color: var(--muted-soft);
+    margin-top: 0.5rem;
   }
   .footer-note code { font-size: 0.7rem; }
-  .footer-note a { color: var(--accent); }
+
+  @media (max-width: 480px) {
+    body { padding: 1.75rem 1rem 3rem; }
+    .card { padding: 1.15rem 1.1rem; }
+    h1 { font-size: 1.55rem; }
+  }
 </style>
 </head>
 <body>
 
+<span class="kicker">Governed Agentic RAG</span>
 <h1>Research Triage Agent</h1>
-<p class="sub">Governed agentic RAG demo. ADK + BigQuery + Gemini. Every claim cited, unsupported claims flagged rather than guessed.</p>
+<p class="sub">ADK + BigQuery + Gemini. Every claim cited, unsupported claims flagged rather than guessed.</p>
 
-<div class="explainer">
+<div class="card explainer">
   <p>Every question below runs through four tools, in order: <code>search_corpus</code> embeds your question and finds the closest papers in BigQuery, <code>retrieve</code> pulls their full abstract text, <code>synthesize</code> (Gemini 2.5 Pro) drafts a claim-by-claim answer citing the papers it used, and <code>validate</code> (Gemini 2.5 Flash) checks each individual claim against the actual text of the paper it cites. A claim only appears under "Findings" if validate confirms the cited abstract really supports it; anything it can't confirm is reported under "Could not verify" instead of being quietly dropped or guessed. Watch the trace table after you run a query, it shows all four calls, the model each one used, and what each one cost.</p>
   <figure>
     <svg viewBox="0 0 680 600" role="img" aria-label="Your question passes through search_corpus, retrieve, synthesize, and validate in order; validate checks each claim against its source and routes supported claims to Findings and unconfirmed ones to Could not verify, both of which can appear in the final answer.">
@@ -201,22 +336,25 @@
   </figure>
 </div>
 
-<div class="buttons">
-  <button id="btn-happy">Run happy-path demo</button>
-  <button id="btn-gap">Run gap (guardrail) demo</button>
+<div class="card">
+  <p class="card-title">Ask the corpus</p>
+  <div class="buttons">
+    <button id="btn-happy">Run happy-path demo</button>
+    <button id="btn-gap">Run gap (guardrail) demo</button>
+  </div>
+
+  <textarea id="question" placeholder="Or ask your own question about the corpus (prompt engineering effects on LLM-generated code quality)..."></textarea>
+  <div class="buttons">
+    <button id="btn-ask" class="primary">Ask</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="trace"></div>
+  <div id="answer"></div>
+  <div id="summary"></div>
 </div>
 
-<textarea id="question" placeholder="Or ask your own question about the corpus (prompt engineering effects on LLM-generated code quality)..."></textarea>
-<div class="buttons">
-  <button id="btn-ask">Ask</button>
-</div>
-
-<div id="status"></div>
-<div id="trace"></div>
-<div id="answer"></div>
-<div id="summary"></div>
-
-<details class="admin">
+<details class="card admin">
   <summary>Admin: manage the corpus</summary>
 
   <h3>How ingest picks which papers to pull</h3>
@@ -225,7 +363,7 @@
   <textarea id="ingest-query" rows="4"></textarea>
   <div class="buttons">
     <input type="number" id="ingest-max" value="400" min="1" max="2000">
-    <button id="btn-ingest">Ingest</button>
+    <button id="btn-ingest" class="primary">Ingest</button>
   </div>
   <div id="ingest-status"></div>
 
@@ -289,13 +427,13 @@ function linkifyCitations(escapedText) {
 }
 
 function renderTrace(entries) {
-  let html = '<table><tr><th>#</th><th>tool</th><th>model</th><th>in/out tok</th><th>latency</th><th>cost</th><th>result</th></tr>';
+  let html = '<div class="table-wrap"><table><tr><th>#</th><th>tool</th><th>model</th><th>in/out tok</th><th>latency</th><th>cost</th><th>result</th></tr>';
   entries.forEach((e, i) => {
     html += `<tr><td>${i + 1}</td><td>${e.tool}</td><td>${e.model || '-'}</td>` +
       `<td>${e.input_tokens}/${e.output_tokens}</td><td>${e.latency_ms}ms</td>` +
       `<td>$${e.cost_usd.toFixed(5)}</td><td>${escapeHtml(e.output_summary)}</td></tr>`;
   });
-  html += '</table>';
+  html += '</table></div>';
   return html;
 }
 

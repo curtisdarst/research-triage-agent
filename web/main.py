@@ -20,10 +20,12 @@ hardening".
 from __future__ import annotations
 
 import asyncio
+import json
 import time
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from google.cloud import bigquery
 from google.genai.errors import ClientError
@@ -131,8 +133,18 @@ async def ask(req: AskRequest) -> JSONResponse:
     )
 
 
-@app.post("/api/ingest")
-async def ingest(req: IngestRequest) -> JSONResponse:
+@app.post("/api/ingest", response_model=None)
+async def ingest(req: IngestRequest) -> StreamingResponse | JSONResponse:
+    """Streams progress as newline-delimited SSE events (fetch/embed/upsert
+    lines from run_ingest's on_progress, as they happen) rather than
+    blocking silently for the whole run. The frontend reads this with a
+    plain fetch() + stream reader, not EventSource, since EventSource
+    can't send a POST body and search_query needs one.
+
+    Event shapes: {"type": "progress", "line": str},
+    {"type": "done", ...same fields the old JSON response had...},
+    {"type": "error", "error": str}.
+    """
     if req.max_results < 1 or req.max_results > MAX_INGEST_RESULTS:
         return JSONResponse(
             {"error": f"max_results must be between 1 and {MAX_INGEST_RESULTS}"},
@@ -145,40 +157,63 @@ async def ingest(req: IngestRequest) -> JSONResponse:
             status_code=409,
         )
 
-    async with _INGEST_LOCK:
-        start = time.perf_counter()
-        try:
-            # run_ingest is synchronous (requests, time.sleep, sync genai
-            # calls) and can take minutes for a large corpus; to_thread
-            # keeps it off the event loop rather than blocking the whole
-            # app, including /status, for the duration.
-            result = await asyncio.to_thread(
-                run_ingest,
-                req.max_results,
-                search_query=req.search_query,
-                on_progress=lambda _line: None,
-            )
-        except ClientError as e:
-            if e.code == 429:
-                return JSONResponse(
-                    {"error": "Rate limited by Gemini/Vertex (429 RESOURCE_EXHAUSTED) while embedding. Wait a bit and try again."},
-                    status_code=429,
-                )
-            return JSONResponse({"error": f"Gemini/Vertex API error: {e}"}, status_code=502)
-        except Exception as e:  # noqa: BLE001 - surfaced to the caller as JSON, not a bare 500 page
-            return JSONResponse({"error": f"Ingest failed: {e}"}, status_code=500)
-        wall_seconds = time.perf_counter() - start
+    async def event_stream() -> AsyncIterator[str]:
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
 
-    return JSONResponse(
-        {
-            "fetched": result["fetched"],
-            "affected": result["affected"],
-            "total_rows": result["total_rows"],
-            "cost_usd": result["cost_usd"],
-            "tokens": result["tokens"],
-            "wall_seconds": round(wall_seconds, 1),
-        }
-    )
+        def on_progress(line: str) -> None:
+            # Called from the to_thread worker thread below, not the event
+            # loop thread, so the queue needs a threadsafe handoff.
+            loop.call_soon_threadsafe(queue.put_nowait, json.dumps({"type": "progress", "line": line}))
+
+        async def run() -> None:
+            async with _INGEST_LOCK:
+                start = time.perf_counter()
+                try:
+                    # run_ingest is synchronous (requests, time.sleep, sync
+                    # genai calls) and can take minutes for a large corpus;
+                    # to_thread keeps it off the event loop rather than
+                    # blocking the whole app, including /status.
+                    result = await asyncio.to_thread(
+                        run_ingest,
+                        req.max_results,
+                        search_query=req.search_query,
+                        on_progress=on_progress,
+                    )
+                    wall_seconds = time.perf_counter() - start
+                    await queue.put(
+                        json.dumps(
+                            {
+                                "type": "done",
+                                "fetched": result["fetched"],
+                                "affected": result["affected"],
+                                "total_rows": result["total_rows"],
+                                "cost_usd": result["cost_usd"],
+                                "tokens": result["tokens"],
+                                "wall_seconds": round(wall_seconds, 1),
+                            }
+                        )
+                    )
+                except ClientError as e:
+                    if e.code == 429:
+                        msg = "Rate limited by Gemini/Vertex (429 RESOURCE_EXHAUSTED) while embedding. Wait a bit and try again."
+                    else:
+                        msg = f"Gemini/Vertex API error: {e}"
+                    await queue.put(json.dumps({"type": "error", "error": msg}))
+                except Exception as e:  # noqa: BLE001 - surfaced to the caller as an SSE event, not a bare 500 page
+                    await queue.put(json.dumps({"type": "error", "error": f"Ingest failed: {e}"}))
+                finally:
+                    await queue.put(None)  # sentinel: stop iterating below
+
+        task = asyncio.create_task(run())
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {item}\n\n"
+        await task
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.get("/api/ingest/default-query")

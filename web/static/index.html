@@ -102,7 +102,15 @@
     font-family: ui-monospace, Consolas, monospace;
     font-size: 0.8rem;
   }
-  #ingest-status, #clear-status { font-size: 0.85rem; margin-top: 0.6rem; }
+  #clear-status { font-size: 0.85rem; margin-top: 0.6rem; }
+  #ingest-status {
+    font-size: 0.8rem;
+    font-family: ui-monospace, Consolas, monospace;
+    margin-top: 0.6rem;
+    white-space: pre-wrap;
+    max-height: 10rem;
+    overflow-y: auto;
+  }
   button.danger {
     background: #fbeceb;
     color: var(--danger);
@@ -335,7 +343,8 @@ document.getElementById('btn-ingest').addEventListener('click', async () => {
   const searchQuery = ingestQueryEl.value.trim();
 
   buttons.forEach(b => b.disabled = true);
-  ingestStatusEl.textContent = `Fetching and embedding up to ${maxResults} papers... this can take several minutes for a large run.`;
+  const log = [`Fetching and embedding up to ${maxResults} papers... this can take several minutes for a large run.`];
+  ingestStatusEl.textContent = log.join('\n');
 
   try {
     const resp = await fetch('/api/ingest', {
@@ -343,18 +352,55 @@ document.getElementById('btn-ingest').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ max_results: maxResults, search_query: searchQuery || null }),
     });
-    const data = await resp.json();
+
     if (!resp.ok) {
-      ingestStatusEl.textContent = 'Error: ' + (data.error || resp.status);
+      // Validation/lock errors (400/409) come back as plain JSON, not a
+      // stream, since the run never started.
+      const data = await resp.json().catch(() => ({}));
+      log.push('Error: ' + (data.error || resp.status));
+      ingestStatusEl.textContent = log.join('\n');
       return;
     }
-    ingestStatusEl.textContent =
-      `Done. Fetched ${data.fetched} papers, ${data.affected} rows affected. ` +
-      `Corpus now has ${data.total_rows} papers. ` +
-      `Cost: $${data.cost_usd.toFixed(4)} (~${data.tokens.toLocaleString()} tokens), ` +
-      `${data.wall_seconds}s wall clock.`;
+
+    // The response body is an SSE stream (see web/main.py /api/ingest):
+    // one or more "data: {...}\n\n" events, read as they arrive rather
+    // than waiting for the connection to close.
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let sep;
+      while ((sep = buffer.indexOf('\n\n')) >= 0) {
+        const rawEvent = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const dataLine = rawEvent.split('\n').find(l => l.startsWith('data: '));
+        if (!dataLine) continue;
+        const event = JSON.parse(dataLine.slice(6));
+
+        if (event.type === 'progress') {
+          log.push(event.line);
+        } else if (event.type === 'done') {
+          log.push(
+            `Done. Fetched ${event.fetched} papers, ${event.affected} rows affected. ` +
+            `Corpus now has ${event.total_rows} papers. ` +
+            `Cost: $${event.cost_usd.toFixed(4)} (~${event.tokens.toLocaleString()} tokens), ` +
+            `${event.wall_seconds}s wall clock.`
+          );
+        } else if (event.type === 'error') {
+          log.push('Error: ' + event.error);
+        }
+        ingestStatusEl.textContent = log.join('\n');
+        ingestStatusEl.scrollTop = ingestStatusEl.scrollHeight;
+      }
+    }
   } catch (err) {
-    ingestStatusEl.textContent = 'Request failed: ' + err;
+    log.push('Request failed: ' + err);
+    ingestStatusEl.textContent = log.join('\n');
   } finally {
     buttons.forEach(b => b.disabled = false);
   }

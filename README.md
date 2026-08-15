@@ -371,7 +371,12 @@ Scales to zero when idle, so there's no cost while nobody's using it.
 collapsed "Admin" section on the same page, not a separate route. It calls
 the same `run_ingest()` used by the CLI (`ingest/ingest_arxiv.py`), so
 it's the identical idempotent fetch-embed-upsert pipeline, just triggered
-by a button instead of a terminal command. The search query field is
+by a button instead of a terminal command. Progress streams to the page
+live (Server-Sent Events over the same POST connection, not polling: a
+single request stays open for the run's duration and the fetch/embed/
+upsert lines `run_ingest`'s `on_progress` already produced for the CLI
+now render as they happen instead of the page going quiet for however
+many minutes a large run takes). The search query field is
 prepopulated from `GET /api/ingest/default-query` (the same
 `SEARCH_QUERY` the CLI defaults to) but editable, so retargeting the
 corpus at a different topic doesn't require touching source code, just

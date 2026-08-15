@@ -21,10 +21,9 @@ a cited summary" is a solved, crowded lane, and none of the above are ADK
 implementations, none package a university-IT deployment posture
 (per-project cost attribution, audit logging, a data perimeter, an eval
 gate in CI), and none ship a portable, reproducible grounding eval you can
-point at your own corpus. Those three gaps (an ADK-native implementation,
-institutional deployment posture, and a reproducible eval) are what this
-project occupies, on top of a standard agentic-RAG pattern, not instead of
-one.
+point at your own corpus. Those three gaps, an ADK-native implementation,
+institutional deployment posture, and a reproducible eval, sit on top of a
+standard agentic-RAG pattern here rather than replacing one.
 
 It is also explicitly not the same thing as ADK's own `llm_auditor` sample.
 `llm_auditor` uses critic/reviser sub-agents to critique and improve a
@@ -35,16 +34,12 @@ verification with provenance, not critique.
 
 ## Topic choice
 
-The brief this was built from suggested a hard-science, institution-adjacent
-topic (materials science, agricultural genomics, medical imaging). This
-build instead uses a corpus centered on **the effect of prompt engineering
-patterns on LLM-generated code quality**, the author's own dissertation
-research area (arXiv `cs.SE`, `cs.CL`, `cs.AI`). That's a deliberate
-substitution, not a shortcut: arXiv has strong native coverage of the
-topic, and personal domain expertise means the person running the demo can
-actually judge, in real time, whether the agent's digest and its guardrail
-catch are correct. That's a more credible test of the pattern than a topic
-the presenter would have to take on faith.
+The corpus is centered on **the effect of prompt engineering patterns on
+LLM-generated code quality**, the author's own dissertation research area
+(arXiv `cs.SE`, `cs.CL`, `cs.AI`). arXiv has strong native coverage here, and
+personal domain expertise means the person running the demo can judge, in
+real time, whether the agent's digest and its guardrail catch are correct, a
+more credible test than a topic the presenter would have to take on faith.
 
 ## Architecture
 
@@ -137,25 +132,25 @@ sequenceDiagram
     Note over V,O: run_query() reads this directly from the tool-call result,<br/>it does not depend on the orchestrator repeating it correctly.
 ```
 
-**Why tiered models**: `search_corpus`'s embedding call and `validate`'s
-per-claim check are cheap, high-volume, low-creativity tasks, so they run
-on Flash. `synthesize`'s writing task is not, so it runs on Pro. The
-orchestrator itself only sequences tool calls, so it runs on Flash too.
-Paying Pro rates for every step is how proof-of-concept economics stop
-working at production volume.
+A few design notes:
 
-**Why no vector index**: BigQuery only populates a `CREATE VECTOR INDEX`
-once the indexed table exceeds ~10 MB; this corpus (a few hundred rows of
-3072-dim float embeddings) sits at or under that line, so `VECTOR_SEARCH`
-correctly falls back to brute force. The index DDL is in
-[`setup/bigquery_schema.sql`](setup/bigquery_schema.sql), commented out,
-for when the corpus grows past that threshold.
-
-**Note on naming**: Vertex AI was rebranded to the **Gemini Enterprise
-Agent Platform** at Cloud Next '26 (Vertex AI stopped appearing in the
-Cloud Console on 2026-05-21). The underlying API (`aiplatform.googleapis.com`)
-and most SDK surfaces are unchanged; this README uses "Vertex" and "Gemini
-Enterprise Agent Platform" interchangeably to match current docs.
+- **Tiered models.** `search_corpus`'s embedding call and `validate`'s
+  per-claim check are cheap, high-volume, low-creativity tasks, so they run
+  on Flash. `synthesize`'s writing task is not, so it runs on Pro. The
+  orchestrator itself only sequences tool calls, so it runs on Flash too.
+  Paying Pro rates for every step is how proof-of-concept economics stop
+  working at production volume.
+- **No vector index.** BigQuery only populates a `CREATE VECTOR INDEX` once
+  the indexed table exceeds ~10 MB; this corpus (a few hundred rows of
+  3072-dim float embeddings) sits at or under that line, so `VECTOR_SEARCH`
+  correctly falls back to brute force. The index DDL is in
+  [`setup/bigquery_schema.sql`](setup/bigquery_schema.sql), commented out,
+  for when the corpus grows past that threshold.
+- **Naming.** Vertex AI was rebranded to the **Gemini Enterprise Agent
+  Platform** at Cloud Next '26 (Vertex AI stopped appearing in the Cloud
+  Console on 2026-05-21). The underlying API (`aiplatform.googleapis.com`)
+  and most SDK surfaces are unchanged; this README uses "Vertex" and "Gemini
+  Enterprise Agent Platform" interchangeably to match current docs.
 
 ## Status
 
@@ -317,12 +312,11 @@ directly. No `owner`, no `editor`, no IAM access, no reach into any other
 GCP resource. If the container were ever compromised, the blast radius is
 bounded to this one BigQuery dataset and Vertex AI quota, not the project.
 
-**The honest gap: ingest and admin actions didn't get their own
-authorization tier.** `roles/run.invoker` is all-or-nothing at the service
-level, anyone who can query can also trigger ingest or wipe the corpus.
-A real production version would separate read, write, and destructive
-access at the app layer instead of treating "in" and "out" as the only
-two states. The clear-corpus endpoint in particular has no server-side
+One honest gap: ingest and admin actions didn't get their own authorization
+tier. `roles/run.invoker` is all-or-nothing at the service level, anyone
+who can query can also trigger ingest or wipe the corpus. A real
+production version would separate read, write, and destructive access at
+the app layer instead of treating "in" and "out" as the only two states. The clear-corpus endpoint in particular has no server-side
 confirmation step at all, it trusts the caller entirely; the web UI's
 `confirm()` dialog (naming the live row count) and the CLI's typed-`clear`
 prompt are both client-side conveniences, not a security boundary. There's
@@ -352,11 +346,11 @@ gcloud run services add-iam-policy-binding research-triage-agent \
   --role="roles/run.invoker"
 ```
 
-**Deployed with `--concurrency=1`.** `agent/tools.py` and `agent/trace.py`
-hold per-query state (the retrieval/synthesis handle store, the trace
-recorder) in module-level singletons, reset at the start of each request.
-That's correct for a single-request CLI process, but two concurrent
-requests in the same process would corrupt each other's state.
+This is deployed with `--concurrency=1`. `agent/tools.py` and
+`agent/trace.py` hold per-query state (the retrieval/synthesis handle
+store, the trace recorder) in module-level singletons, reset at the start
+of each request. That's correct for a single-request CLI process, but two
+concurrent requests in the same process would corrupt each other's state.
 `--concurrency=1` means Cloud Run routes one request at a time per
 container instance and spins up separate instances (separate processes)
 under concurrent load, which sidesteps the problem without touching the
@@ -367,7 +361,7 @@ hardening](#production-hardening).
 
 Scales to zero when idle, so there's no cost while nobody's using it.
 
-**Ingest and corpus management are also exposed in the web UI**, behind a
+Ingest and corpus management are also exposed in the web UI, behind a
 collapsed "Admin" section on the same page, not a separate route. It calls
 the same `run_ingest()` used by the CLI (`ingest/ingest_arxiv.py`), so
 it's the identical idempotent fetch-embed-upsert pipeline, just triggered
@@ -466,10 +460,9 @@ figures. As of 2026-08-13 pricing (`agent/config.py`, `ai.google.dev/gemini-api/
 | `validate` | gemini-2.5-flash | $0.30 / 1M in, $2.50 / 1M out |
 | orchestrator (tool-call sequencing) | gemini-2.5-flash | $0.30 / 1M in, $2.50 / 1M out |
 
-**A real accounting bug, caught against an actual GCP billing export, not
-in a code review.** Every cost figure this project reported before
-2026-08-14 was an undercount, for two independent reasons, both now
-fixed:
+Every cost figure this project reported before 2026-08-14 was an
+undercount, caught against an actual GCP billing export rather than in a
+code review, for two independent reasons, both now fixed:
 
 1. 2.5-series models emit internal "thinking" tokens by default
    (`usage_metadata.thoughts_token_count`), invisible in the response
@@ -568,8 +561,8 @@ This demo intentionally does not include:
 - **Embedding drift**: if `gemini-embedding-001` is ever updated, existing
   stored embeddings and new query embeddings could drift out of the same
   space; re-ingesting is the correct fix, not a partial re-embed.
-- **No authentication or multi-user support**: out of scope by design
-  (see the original build brief's Tier 3).
+- **No authentication or multi-user support**: out of scope by design, a
+  future tier of work, not an oversight.
 - **Corpus size is small by design** (400 abstracts on one narrow topic),
   which is also why no vector index is created. See Architecture.
 

@@ -195,6 +195,9 @@
 
   .explainer p { margin: 0 0 0.9rem; font-size: 0.94rem; }
   .explainer p:last-child { margin-bottom: 0; }
+  .explainer ol { margin: 0 0 0.9rem; padding-left: 1.4rem; font-size: 0.94rem; }
+  .explainer ol li { margin-bottom: 0.4rem; }
+  .explainer ol li:last-child { margin-bottom: 0; }
   .explainer figure { margin: 1rem 0 0.4rem; padding: 0.9rem; background: var(--bg-inset); border-radius: var(--radius); }
   .explainer svg { width: 100%; height: auto; display: block; color: var(--fg); }
   .explainer figcaption { color: var(--muted); font-size: 0.8rem; margin-top: 0.6rem; }
@@ -269,7 +272,14 @@
 <p class="sub">ADK + BigQuery + Gemini. Every claim cited, unsupported claims flagged rather than guessed.</p>
 
 <div class="card explainer">
-  <p>Every question below runs through four tools, in order: <code>search_corpus</code> embeds your question and finds the closest papers in BigQuery, <code>retrieve</code> pulls their full abstract text, <code>synthesize</code> (Gemini 2.5 Pro) drafts a claim-by-claim answer citing the papers it used, and <code>validate</code> (Gemini 2.5 Flash) checks each individual claim against the actual text of the paper it cites. A claim only appears under "Findings" if validate confirms the cited abstract really supports it; anything it can't confirm is reported under "Could not verify" instead of being quietly dropped or guessed. Watch the trace table after you run a query, it shows all four calls, the model each one used, and what each one cost.</p>
+  <p>Every question below runs through four tools, in order:</p>
+  <ol>
+    <li><code>search_corpus</code> embeds your question and finds the closest papers in BigQuery</li>
+    <li><code>retrieve</code> pulls their full abstract text</li>
+    <li><code>synthesize</code> (Gemini 2.5 Pro) drafts a claim-by-claim answer citing the papers it used</li>
+    <li><code>validate</code> (Gemini 2.5 Flash) checks each individual claim against the actual text of the paper it cites</li>
+  </ol>
+  <p>A claim only appears under "Findings" if validate confirms the cited abstract really supports it; anything it can't confirm is reported under "Could not verify" instead of being quietly dropped or guessed. Watch the trace table after you run a query, it shows all four calls, the model each one used, and what each one cost.</p>
   <figure>
     <svg viewBox="0 0 680 600" role="img" aria-label="Your question passes through search_corpus, retrieve, synthesize, and validate in order; validate checks each claim against its source and routes supported claims to Findings and unconfirmed ones to Could not verify, both of which can appear in the final answer.">
       <defs>

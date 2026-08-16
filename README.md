@@ -8,6 +8,23 @@ guardrail, on a small, real corpus, with a reproducible eval of that
 guardrail (see [Eval results](#eval-results)). See [Status](#status) for
 exactly what is and isn't built.
 
+## Contents
+
+- [What this is not](#what-this-is-not)
+- [Topic choice](#topic-choice)
+- [Architecture](#architecture)
+- [Status](#status)
+- [Eval results](#eval-results)
+- [Quickstart](#quickstart)
+- [Web deployment (Cloud Run)](#web-deployment-cloud-run)
+- [Model tier comparison](#model-tier-comparison)
+- [Demo script (~3 minutes)](#demo-script-3-minutes)
+- [Cost per query](#cost-per-query)
+- [Production hardening](#production-hardening)
+- [Known limitations](#known-limitations)
+- [Repo hygiene](#repo-hygiene)
+- [arXiv API usage and terms](#arxiv-api-usage-and-terms)
+
 ## What this is not
 
 This is not a literature-review tool, and it is not trying to compete with

@@ -48,46 +48,17 @@ the retrieved papers actually address the question. Citations alone don't
 mean grounded. The one thing this system adds on top of that, that a naive
 agent doesn't have, is a hop that checks before anything ships:
 
-```mermaid
-flowchart LR
-    Q(["Out-of-corpus question,<br/>e.g. crop yield prediction"]) --> SY["synthesize<br/>writes claims from whatever<br/>was retrieved, citations attached"]
+![The one hop a naive agent skips](docs/architecture/guardrail-hop.svg)
 
-    SY -->|"naive agent: ships directly"| NAIVE["Confident answer,<br/>looks legitimate,<br/>not actually grounded"]
-    SY -->|"this system: one more hop"| V["validate<br/>checks each claim against<br/>its actual cited source text"]
-    V --> GAP["'Could not verify':<br/>gap reported, not guessed"]
-
-    style NAIVE fill:#c0392b,color:#fff,stroke:#8b2c20,stroke-width:2px
-    style V fill:#2f7f8f,color:#fff,stroke:#1f5560,stroke-width:2px
-    style GAP fill:#2f7f8f,color:#fff,stroke:#1f5560,stroke-width:2px
-```
+*(Editable source: [`docs/architecture/guardrail-hop.excalidraw`](docs/architecture/guardrail-hop.excalidraw), open at [excalidraw.com](https://excalidraw.com).)*
 
 Same `synthesize` output, same citations attached either way. The only
 difference is whether something reads them before a user does. That single
 added hop is the whole pitch. Here's where it sits in the full system:
 
-```mermaid
-flowchart TB
-    U(["Research question"]) --> O["research_triage_agent<br/>orchestrator · gemini-2.5-flash · sequences tool calls by instruction"]
+![research_triage_agent full tool-call flow](docs/architecture/system-architecture.svg)
 
-    O -->|"1"| T1["search_corpus<br/><i>embed query, BQ VECTOR_SEARCH</i>"]
-    O -->|"2"| T2["retrieve<br/><i>fetch full text by paper_id</i>"]
-    O -->|"3"| T3["synthesize (gemini-2.5-pro)<br/>claim-by-claim digest, cites paper_ids"]
-    O -->|"4"| T4["validate (gemini-2.5-flash)<br/>checks each claim vs. its cited source text"]
-
-    EMB[["gemini-embedding-001"]]
-    T1 <--> EMB
-    T1 <-->|"VECTOR_SEARCH top-k"| BQ[("BigQuery: papers<br/>id · title · authors · abstract · url · embedding<br/>400 arXiv abstracts")]
-    T2 <-->|"SELECT ... WHERE id IN UNNEST"| BQ
-
-    T1 -.->|"paper_ids"| T2
-    T2 -.->|"retrieval_id"| T3
-    T3 -.->|"synthesis_id"| T4
-
-    T4 -->|"final_markdown, returned verbatim"| O
-    O --> A(["Final answer"])
-
-    style T4 fill:#2f7f8f,color:#fff,stroke:#1f5560,stroke-width:2px
-```
+*(Editable source: [`docs/architecture/system-architecture.excalidraw`](docs/architecture/system-architecture.excalidraw), open at [excalidraw.com](https://excalidraw.com).)*
 
 Tool call order is enforced by instruction (the pattern ADK's own samples
 use), not by a hardcoded pipeline. The orchestrator is genuinely deciding
@@ -110,27 +81,9 @@ Correctness-critical formatting is deterministic code, read by code, not
 by convention; only the sequencing decision is agentic. This is what
 actually happens inside that one `validate` call:
 
-```mermaid
-sequenceDiagram
-    participant O as Orchestrator (Flash)
-    participant Y as synthesize (Pro)
-    participant V as validate (Flash)
-    participant S as Retrieved source text
+![Inside one validate() call](docs/architecture/validate-sequence.svg)
 
-    O->>Y: synthesize(question, retrieval_id)
-    Y-->>O: synthesis_id: N discrete claims, each citing paper_ids
-    O->>V: validate(synthesis_id, retrieval_id)
-    loop for each claim
-        V->>S: does the cited abstract actually say this?
-        S-->>V: supported, or not
-    end
-    alt every claim supported
-        V-->>O: final_markdown = "## Findings" only
-    else one or more unsupported
-        V-->>O: final_markdown = "## Findings" (supported claims)<br/>+ "## Could not verify" (named gap, not dropped)
-    end
-    Note over V,O: run_query() reads this directly from the tool-call result,<br/>it does not depend on the orchestrator repeating it correctly.
-```
+*(Editable source: [`docs/architecture/validate-sequence.excalidraw`](docs/architecture/validate-sequence.excalidraw), open at [excalidraw.com](https://excalidraw.com).)*
 
 A few design notes:
 

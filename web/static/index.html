@@ -276,8 +276,8 @@
   <ol>
     <li><code>search_corpus</code> embeds your question and finds the closest papers in BigQuery</li>
     <li><code>retrieve</code> pulls their full abstract text</li>
-    <li><code>synthesize</code> (Gemini 2.5 Pro) drafts a claim-by-claim answer citing the papers it used</li>
-    <li><code>validate</code> (Gemini 2.5 Flash) checks each individual claim against the actual text of the paper it cites</li>
+    <li><code>synthesize</code> (Gemini 3.1 Pro Preview) drafts a claim-by-claim answer citing the papers it used</li>
+    <li><code>validate</code> (Gemini 3.7 Flash) checks each individual claim against the actual text of the paper it cites</li>
   </ol>
   <p>A claim only appears under "Findings" if validate confirms the cited abstract really supports it; anything it can't confirm is reported under "Could not verify" instead of being quietly dropped or guessed. Watch the trace table after you run a query, it shows all four calls, the model each one used, and what each one cost.</p>
   <figure>
@@ -309,14 +309,14 @@
 
       <!-- synthesize -->
       <rect x="180" y="228" width="320" height="54" rx="6" fill="none" stroke="currentColor"></rect>
-      <text x="340" y="249" text-anchor="middle" class="diagram-text" font-weight="600">synthesize (Gemini 2.5 Pro)</text>
+      <text x="340" y="249" text-anchor="middle" class="diagram-text" font-weight="600">synthesize (Gemini 3.1 Pro Preview)</text>
       <text x="340" y="266" text-anchor="middle" class="diagram-label">writes claims, cites paper_ids for each</text>
       <line x1="340" y1="282" x2="340" y2="312" stroke="currentColor" marker-end="url(#arrow)"></line>
       <text x="352" y="300" class="diagram-label">synthesis_id</text>
 
       <!-- validate (accent) -->
       <rect x="180" y="312" width="320" height="54" rx="6" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="1.5"></rect>
-      <text x="340" y="333" text-anchor="middle" class="diagram-text" font-weight="600">validate (Gemini 2.5 Flash)</text>
+      <text x="340" y="333" text-anchor="middle" class="diagram-text" font-weight="600">validate (Gemini 3.7 Flash)</text>
       <text x="340" y="350" text-anchor="middle" class="diagram-label">checks each claim against its cited source text</text>
 
       <!-- branch -->

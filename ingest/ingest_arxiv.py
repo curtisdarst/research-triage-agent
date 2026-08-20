@@ -137,9 +137,12 @@ def run_ingest(max_results: int, search_query: str | None = None, on_progress=pr
     that streams to the caller instead).
     """
     project_id = os.environ["GCP_PROJECT_ID"]
-    region = os.environ.get("GCP_REGION", "us-central1")
     dataset = os.environ.get("BQ_DATASET", "research_triage")
     embedding_model = os.environ.get("MODEL_EMBEDDING", "gemini-embedding-001")
+    # Separate from GCP_REGION (which stays pinned to BigQuery's region):
+    # see agent/config.py's model_region for why this defaults to "global"
+    # rather than reusing GCP_REGION.
+    model_region = os.environ.get("MODEL_REGION", "global")
 
     on_progress(f"Fetching up to {max_results} papers from arXiv...")
     papers = fetch_papers(max_results=max_results, search_query=search_query)
@@ -149,7 +152,7 @@ def run_ingest(max_results: int, search_query: str | None = None, on_progress=pr
     if not papers:
         return {"fetched": 0, "affected": 0, "total_rows": None, "cost_usd": 0.0, "tokens": 0}
 
-    genai_client = genai.Client(vertexai=True, project=project_id, location=region)
+    genai_client = genai.Client(vertexai=True, project=project_id, location=model_region)
     on_progress(f"Embedding {len(papers)} abstracts with {embedding_model}...")
     vectors, approx_tokens = embed_abstracts(
         genai_client, embedding_model, [p.abstract for p in papers], on_progress=on_progress

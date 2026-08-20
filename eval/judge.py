@@ -32,7 +32,7 @@ def _genai_client() -> genai.Client:
     global _genai
     if _genai is None:
         _genai = genai.Client(
-            vertexai=True, project=_config.project_id, location=_config.region
+            vertexai=True, project=_config.project_id, location=_config.model_region
         )
     return _genai
 

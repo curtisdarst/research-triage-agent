@@ -23,9 +23,9 @@ every synthesized claim to score `validate()`'s own accuracy.
   limitations": the validator is itself an LLM, and so is this judge).
 
 The judge (`eval/judge.py`) is deliberately a different, stronger model
-(`gemini-2.5-pro` by default) than `validate()` (`gemini-2.5-flash`), with
-an independently written prompt, graded blind to `validate()`'s verdict.
-It is not the same check run twice.
+(`gemini-3.1-pro-preview` by default) than `validate()`
+(`gemini-3.7-flash`), with an independently written prompt, graded blind
+to `validate()`'s verdict. It is not the same check run twice.
 
 ## Golden questions
 

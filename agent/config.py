@@ -18,6 +18,7 @@ load_dotenv()
 class Config:
     project_id: str
     region: str
+    model_region: str
     dataset: str
     table: str
     model_orchestrator: str
@@ -30,6 +31,14 @@ class Config:
 def load_config() -> Config:
     project_id = os.environ["GCP_PROJECT_ID"]
     region = os.environ.get("GCP_REGION", "us-central1")
+    # Separate from `region`: BigQuery and Cloud Run stay pinned to
+    # GCP_REGION, but gemini-3.7-flash and gemini-3.1-pro-preview both
+    # 404 in us-central1 for this project and only work via the "global"
+    # Vertex endpoint (confirmed by live-testing every region tried before
+    # picking these as the defaults). If a future model needs a specific
+    # region instead of global, override this env var, don't repoint
+    # GCP_REGION, that would also move BigQuery/Cloud Run.
+    model_region = os.environ.get("MODEL_REGION", "global")
 
     # ADK's internal google-genai client (used for the orchestrator agent's
     # own LLM calls) builds its client from these standard env vars rather
@@ -40,21 +49,24 @@ def load_config() -> Config:
     # API (which needs an API key we don't have/want).
     os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
     os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
-    os.environ.setdefault("GOOGLE_CLOUD_LOCATION", region)
+    os.environ.setdefault("GOOGLE_CLOUD_LOCATION", model_region)
 
     return Config(
         project_id=project_id,
         region=region,
+        model_region=model_region,
         dataset=os.environ.get("BQ_DATASET", "research_triage"),
         table=os.environ.get("BQ_TABLE", "papers"),
-        model_orchestrator=os.environ.get("MODEL_ORCHESTRATOR", "gemini-2.5-flash"),
-        model_synthesis=os.environ.get("MODEL_SYNTHESIS", "gemini-2.5-pro"),
-        model_validation=os.environ.get("MODEL_VALIDATION", "gemini-2.5-flash"),
+        model_orchestrator=os.environ.get("MODEL_ORCHESTRATOR", "gemini-3.7-flash"),
+        model_synthesis=os.environ.get("MODEL_SYNTHESIS", "gemini-3.1-pro-preview"),
+        model_validation=os.environ.get("MODEL_VALIDATION", "gemini-3.7-flash"),
         model_embedding=os.environ.get("MODEL_EMBEDDING", "gemini-embedding-001"),
         # Deliberately Pro by default, even though validate() uses Flash —
         # the eval judge is meant to be a meaningfully stronger, slower,
         # more careful second opinion, not a repeat of the same check.
-        model_judge=os.environ.get("MODEL_JUDGE", "gemini-2.5-pro"),
+        # gemini-3.1-pro-preview is preview-tier (no stable Gemini 3.x Pro
+        # exists yet), a deliberate exception to stable-only, see README.
+        model_judge=os.environ.get("MODEL_JUDGE", "gemini-3.1-pro-preview"),
     )
 
 
@@ -64,6 +76,15 @@ PRICING_PER_1M_TOKENS = {
     "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
     "gemini-embedding-001": {"input": 0.15, "output": 0.0},
+    # Verified against ai.google.dev/gemini-api/docs/pricing on 2026-08-15.
+    # Promotional rate through 2026-12-31; rises to $1.50 / $7.50 on
+    # 2027-01-01 — update this before trusting cost figures past that date.
+    "gemini-3.7-flash": {"input": 0.75, "output": 3.75},
+    # Verified against ai.google.dev/gemini-api/docs/pricing on 2026-08-15.
+    # <=200k token prompts; rises to $4.00 / $18.00 above 200k, not modeled
+    # here since this project's prompts never approach that (small corpus,
+    # short retrieval payloads).
+    "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},
 }
 
 

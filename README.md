@@ -138,7 +138,11 @@ graded by an independent judge against `validate()`'s own verdicts. See
 run this against your own corpus; full per-claim detail in
 [`eval/results/latest.json`](eval/results/latest.json).
 
-Models: orchestrator/validation `gemini-2.5-flash`, synthesis `gemini-2.5-pro`, judge `gemini-2.5-pro`. Run date: 2026-08-13.
+Models: orchestrator/validation `gemini-2.5-flash`, synthesis `gemini-2.5-pro`, judge `gemini-2.5-pro`. Run date: 2026-08-13. The
+project has since moved to `gemini-3.7-flash` / `gemini-3.1-pro-preview`
+(see [Cost per query](#cost-per-query)); this eval has not been re-run
+against the new models yet, so treat the numbers below as the 2.5-generation
+baseline, not a claim about current behavior.
 
 | Metric | Value |
 |---|---|
@@ -366,34 +370,46 @@ Flash `validate()` guardrail, so "quality" is a measured claim count, not
 a subjective read:
 
 ```bash
-python scripts/compare_models.py
+python scripts/compare_models.py --query "What effect does chain-of-thought prompting have on generated code quality?"
 ```
 
-Real run, 2026-08-14, happy-path question (cost figures corrected for
-thinking tokens, see [Cost per query](#cost-per-query); this script calls
-`synthesize`/`validate` directly rather than through the orchestrator, so
-the orchestrator-tracing fix doesn't apply here, there's no orchestrator
-in this path to begin with):
+The default query (no `--query` flag, `run_demo.py`'s `HAPPY_QUERY`) is
+answerable but phrased narrowly enough that it occasionally retrieves
+papers neither model considers close enough to synthesize from, in
+which case both correctly report zero claims rather than stretching an
+answer, a real illustration of the guardrail, just not of a claims-count
+comparison. The run below used a broader phrasing of the same topic to
+get one that actually produced findings on both sides.
+
+Real run, 2026-08-15, `gemini-3.7-flash` vs `gemini-3.1-pro-preview`
+(cost figures verified against `ai.google.dev/gemini-api/docs/pricing`;
+this script calls `synthesize`/`validate` directly rather than through
+the orchestrator, so the untraced-orchestrator caveat below doesn't
+apply here, there's no orchestrator in this path to begin with):
 
 | Model | Claims | Supported | Cost | Latency |
 |---|---|---|---|---|
-| gemini-2.5-flash | 7 | 7 | $0.01143 | 23.1s |
-| gemini-2.5-pro | 6 | 6 | $0.02583 | 28.2s |
+| gemini-3.7-flash | 4 | 4 | $0.00899 | 15.8s |
+| gemini-3.1-pro-preview | 4 | 4 | $0.02836 | 17.0s |
 
-Pro cost 2.3x more and took 1.2x longer. Both digests were fully grounded
-this run (0 unsupported on either side), so this particular comparison
-doesn't show a correctness gap, it shows a completeness/style one: Flash
-wrote seven more granular, narrowly-scoped claims where Pro covered
-similar ground in six fuller sentences. Flash is the right choice for
-`validate()`, where the task is a bounded yes/no check per claim. For
-`synthesize()`, where the task is judging which of several retrieved
-papers is worth including and writing a coherent digest from them, this
-run is a real, measured example of why the README's "why tiered models"
-reasoning holds: paying Pro rates for that judgment call buys a
-different, arguably more coherent answer, not just a slower one. Claim
-counts and specific findings vary run to run (this is a live model, not a
-fixture), so treat the exact numbers as one measured sample, not a fixed
-guarantee, and re-run it yourself if you want a fresher one.
+Pro cost 3.2x more for the same claim count this run, and latency, unlike
+the 2.5-generation comparison this section used to show, landed close
+together (17.0s vs 15.8s, about 8% slower) rather than clearly behind:
+Gemini 3's default thinking behavior adds real latency to Flash too, so
+the latency gap that used to favor Flash narrowed. Both digests were
+fully grounded (0 unsupported on either side) and produced the same
+number of claims this run, covering the same four sources with similar
+but not identical wording, so this comparison shows a cost difference
+more than a completeness one this time. Flash is still the right choice
+for `validate()`, where the task is a bounded yes/no check per claim.
+For `synthesize()`, paying Pro rates buys whatever quality difference
+exists between the two digests, worth reading both in
+[`scripts/compare_models.py`](scripts/compare_models.py)'s output
+yourself rather than trusting a one-run claim count as the whole story.
+Claim counts and specific findings vary run to run (this is a live
+model, not a fixture), so treat the exact numbers as one measured
+sample, not a fixed guarantee, and re-run it yourself if you want a
+fresher one.
 
 ## Demo script (~3 minutes)
 
@@ -421,14 +437,22 @@ Then stop talking. Do not narrate the code.
 ## Cost per query
 
 Measured, not estimated. See the trace output of an actual run for exact
-figures. As of 2026-08-13 pricing (`agent/config.py`, `ai.google.dev/gemini-api/docs/pricing`):
+figures. As of 2026-08-15 pricing (`agent/config.py`,
+`ai.google.dev/gemini-api/docs/pricing`):
 
 | Step | Model | Rate |
 |---|---|---|
 | `search_corpus` (embed) | gemini-embedding-001 | $0.15 / 1M input tokens |
-| `synthesize` | gemini-2.5-pro | $1.25 / 1M in, $10.00 / 1M out |
-| `validate` | gemini-2.5-flash | $0.30 / 1M in, $2.50 / 1M out |
-| orchestrator (tool-call sequencing) | gemini-2.5-flash | $0.30 / 1M in, $2.50 / 1M out |
+| `synthesize` | gemini-3.1-pro-preview | $2.00 / 1M in, $12.00 / 1M out (≤200k-token prompts) |
+| `validate` | gemini-3.7-flash | $0.75 / 1M in, $3.75 / 1M out (promotional through 2026-12-31, then $1.50 / $7.50) |
+| orchestrator (tool-call sequencing) | gemini-3.7-flash | same rate as `validate` |
+
+The `gemini-3.1-pro-preview` rate is confirmed against Google's own
+pricing page; unlike the 2.5-generation models, neither of these two
+Gemini 3 models is invokable from `us-central1` in this project, both
+require the `global` Vertex endpoint (`MODEL_REGION=global`), confirmed
+by live-testing every region tried before landing on these defaults.
+See `agent/config.py`'s `model_region`.
 
 Every cost figure this project reported before 2026-08-14 was an
 undercount, caught against an actual GCP billing export rather than in a
@@ -470,6 +494,31 @@ Corpus ingest (400 abstracts, one-time, re-run only when refreshing the
 corpus): **$0.017** in embedding calls. Unaffected by either bug,
 `gemini-embedding-001` doesn't do extended thinking and ingest doesn't
 go through the orchestrator at all.
+
+**Model migration, 2026-08-15: cost held, latency did not.** Moving
+`synthesize`/`validate`/orchestrator from the 2.5 generation to
+`gemini-3.1-pro-preview` / `gemini-3.7-flash` (see [Model tier
+comparison](#model-tier-comparison)) was re-measured against the same
+two demo queries:
+
+| Query | Cost | Wall clock |
+|---|---|---|
+| `--demo happy` (answerable) | $0.03266 (was $0.0327) | ~89s traced (was 66.6s) |
+| `--demo gap` (out of corpus) | $0.01812 (was $0.0136) | 80.7s (was 27.2s) |
+
+Cost landed almost exactly where it was on the happy path despite both
+new models costing more per token, the token mix shifted enough to
+roughly cancel it out; the gap/refusal path did get about 33% more
+expensive. Latency is the real story: `validate()` alone took ~60s in
+the happy-path run (it makes one call per claim, and each one now pays
+Gemini 3's thinking-model latency), and the gap-query run showed a wall
+clock of 80.7s against only ~22s of traced tool latency, meaning roughly
+58s went to the orchestrator's own untraced reasoning turns between tool
+calls. That gap existed before this migration too (`run_debug` has never
+exposed per-event latency, see `agent/agent.py`), but it was small enough
+to ignore with 2.5-generation models and isn't anymore. Treat both rows
+as one measured sample each, not a guarantee, this is a live model and
+Google can change default thinking behavior without notice.
 
 ## Production hardening
 

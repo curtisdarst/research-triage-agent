@@ -12,7 +12,7 @@ of two paragraphs.
 Usage:
     python scripts/compare_models.py
     python scripts/compare_models.py --query "your own research question"
-    python scripts/compare_models.py --models gemini-2.5-flash,gemini-2.5-pro
+    python scripts/compare_models.py --models gemini-3.7-flash,gemini-3.1-pro-preview
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def run_one_model(question: str, retrieval_id: str, model: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--query", type=str, default=HAPPY_QUERY)
-    parser.add_argument("--models", type=str, default="gemini-2.5-flash,gemini-2.5-pro")
+    parser.add_argument("--models", type=str, default="gemini-3.7-flash,gemini-3.1-pro-preview")
     args = parser.parse_args()
     models = [m.strip() for m in args.models.split(",")]
 
